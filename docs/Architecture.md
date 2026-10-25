@@ -2,9 +2,9 @@ ERPSmartAssistant
 ├── api/
 │   └── v1/
 │       ├── conversations.py
-│       ├── documents.py
 │       ├── messages.py
-│       └── assistant_turns.py       # جدید
+│       └── documents.py          # نسخه تمیز قبلی
+│
 ├── schemas/
 ├── services/
 ├── coordinator/

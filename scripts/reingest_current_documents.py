@@ -43,7 +43,9 @@ def main():
                 ]
             )
 
-            payload = {
+            # فیلترها و LangChain-Qdrant از مسیر metadata.* استفاده می‌کنند؛
+            # بنابراین فیلدهای نسخه‌بندی و app_id نیز باید در همین payload تو‌در‌تو باشند.
+            metadata_payload = {
                 "logical_doc_id": logical_doc_id,
                 "doc_version": version,
                 "is_current": is_current,
@@ -65,11 +67,13 @@ def main():
                 continue
 
             point_ids = [p.id for p in points]
-            client.set_payload(
-                collection_name=settings.collection_name,
-                payload=payload,
-                points=point_ids,
-            )
+            for key, value in metadata_payload.items():
+                client.set_payload(
+                    collection_name=settings.collection_name,
+                    payload={key: value},
+                    points=point_ids,
+                    key="metadata",
+                )
             print(f"  [ok]   {doc_id} ({doc.doc_name}) — {len(point_ids)} points updated")
 
         print("Re-ingest complete.")

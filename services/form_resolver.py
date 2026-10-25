@@ -191,6 +191,7 @@ def resolve_form_id(
             model=settings.llm_model,
             base_url=settings.ollama_url,
             temperature=0.0,
+            reasoning=False,   # ← thinking را غیرفعال می‌کند
         )
         return resolve_form_id_llm(question, answer or "", llm)
 

@@ -54,21 +54,22 @@ def send_message(
     if conv.status != "active":
         raise HTTPException(status_code=400, detail="این مکالمه فعال نیست.")
 
-    # ۱. خواندن تاریخچه (۵ نوبت آخر)
+    # خواندن تاریخچه با توجه به liked:
+    # - liked=False حذف می‌شود (exclude_disliked=True)
+    # - liked=True با پیشوند «[پاسخ تأییدشده توسط کاربر]» می‌آید
     history = ConversationService.get_recent_chat_history(
         db,
         conversation_id=conv_id,
         max_turns=settings.chat_history_max_turns,
+        exclude_disliked=True,
     )
 
-    # ۲. ثبت prompt کاربر (یک ردیف با query و answer خالی)
     turn = ConversationService.add_query(
         db=db,
         conversation_id=conv_id,
         query=req.prompt,
     )
 
-    # ۳. تولید پاسخ با RAG (اندازه‌گیری زمان)
     started_at = time.perf_counter()
     try:
         answer, sources, form_id = generate_rag_response(
@@ -79,14 +80,17 @@ def send_message(
         answer, _guardrail_flags = guard_output(answer)
         duration = time.perf_counter() - started_at
 
-        # ۴. به‌روزرسانی همان ردیف با answer + انتشار رویداد
         completed = ConversationService.complete_turn(
             db=db,
             message_id=turn.id,
             answer=answer,
             duration=duration,
             error=None,
-            meta_info={"sources": sources or [], "status": "completed", "formId": form_id},
+            meta_info={
+                "sources": sources or [],
+                "status": "completed",
+                "formId": form_id,
+            },
         )
         return completed
 
@@ -115,7 +119,6 @@ def like_message(
     req: MessageLikeRequest,
     db: Session = Depends(get_db),
 ):
-    # چک می‌کنیم پیام به این مکالمه تعلق داشته باشد
     msg = (
         db.query(Message)
         .filter(Message.id == message_id, Message.conversation_id == conv_id)

@@ -166,6 +166,11 @@ def create_document_file(
             detail=f"نوع فایل غیرمجاز است. تنها فرمت‌های {allowed_types} پذیرفته می‌شوند.",
         )
 
+    # کنترل یکسانی سیستمی که از دستیار استفاده می کند.
+    appId = appId.strip()
+    if not appId:
+        raise HTTPException(status_code=400, detail="appId الزامی است.")
+
     parsed_metadata: Dict[str, Any] = {}
     if metadata:
         try:

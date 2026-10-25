@@ -350,3 +350,30 @@ POST /api/v1/documents/create-text
 بسازیم که **Batch + Upsert + Versioning + Safe Qdrant replacement** را داشته باشد، بدون اینکه هیچ‌کدام از APIهای فعلی تغییر کنند.
 
 بعد از آن مستقیماً برویم سراغ **Metadata Filtering و طراحی صحیح schema متادیتای Qdrant**؛ چون این دو، پایه‌ی کیفیت RAG شما هستند.
+
+
+
+
+
+# **پیشنهاد قدم بعدی (به ترتیب اولویت)**
+🔴 فوری: اصلاح جابه‌جایی create-text و create-text2 (باگ منطقی جدی).
+
+🔴 فوری: اصلاح ترتیب حذف در create-text — اول اسناد جدید را بنویس، بعد قدیمی را حذف کن (یا از Qdrant staging استفاده کن).
+
+🔴 فوری: Failed-per-doc در batch — هر سند در try/except جدا.
+
+🟠 مهم: payload index در Qdrant برای metadata.app_id, metadata.is_current, metadata.logical_doc_id, metadata.doc_name. این ساده‌ترین و مؤثرترین بهبود performance است.
+
+🟠 مهم: افزودن department و language به metadata chunk و فیلترشان در RAG — roadmap مرحله ۳.
+
+🟠 مهم: Reranking — حتی یک cross-encoder سبک مثل bge-reranker-base که با Ollama یا sentence-transformers اجرا شود، کیفیت را چشمگیر بالا می‌برد (مرحله ۴/۱۰).
+
+🟠 مهم: فعال کردن require_api_key روی روترها — یک خط تغییر در main.py.
+
+🟡 در ادامه: Async ingestion با RabbitMQ — چون RabbitMQ و Redis از قبل دارید، این کار ساده است و request را سریع می‌کند.
+
+🟡 در ادامه: dataset ارزیابی RAG — ۵۰ سؤال واقعی + معیار Recall@K و Faithfulness. بدون این، نمی‌فهمی تغییرات (chunk size، reranker، embedding) واقعاً بهتر کرده یا نه.
+
+
+
+

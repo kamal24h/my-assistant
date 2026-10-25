@@ -1,0 +1,2 @@
+logging.getLogger("services.rag_service").setLevel(logging.DEBUG)
+# logging.getLogger("services.form_resolver").setLevel(logging.WARNING)

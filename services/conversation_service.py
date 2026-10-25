@@ -14,6 +14,9 @@ from redis_client import ConversationCache, get_redis_client
 
 logger = logging.getLogger(__name__)
 
+# پیشوندی که در تاریخچه چت به پاسخ‌های liked=True می‌چسبد
+APPROVED_ANSWER_PREFIX = "[پاسخ تأییدشده توسط کاربر] "
+
 
 def _safe_redis_client():
     try:
@@ -39,7 +42,7 @@ class ConversationService:
     ) -> Conversation:
         conv = Conversation(
             id=uuid.uuid4(),
-            app_id=app_id.strip(),   # ← جدید
+            app_id=app_id.strip(),
             tenant_id=tenant_id,
             user_id=user_id,
             user_name=user_name,
@@ -70,7 +73,6 @@ class ConversationService:
 
         return conv
 
-
     @staticmethod
     def get_conversation(
         db: Session,
@@ -84,7 +86,6 @@ class ConversationService:
         if user_id:
             query = query.filter(Conversation.user_id == user_id)
         return query.first()
-
 
     @staticmethod
     def list_conversations(
@@ -108,7 +109,6 @@ class ConversationService:
             .limit(limit)
             .all()
         )
-
 
     @staticmethod
     def update_conversation(
@@ -283,11 +283,17 @@ class ConversationService:
         conversation_id: uuid.UUID,
         max_turns: int = settings.chat_history_max_turns,
         redis_client=None,
+        exclude_disliked: bool = True,
     ) -> List[Tuple[str, str]]:
         """
         آخرین `max_turns` نوبت را به ترتیب زمانی برمی‌گرداند.
-        هر نوبت به دو پیام (user, assistant) تبدیل می‌شود.
-        نوبت‌هایی که answer خالی دارند، فقط پیام user دارند.
+
+        رفتار بر اساس `liked`:
+          - liked=False (و exclude_disliked=True): نوبت از تاریخچه حذف می‌شود.
+            دلیل: تکرار پاسخ بد، مدل را به سمت پاسخ اشتباه هدایت می‌کند.
+          - liked=True: پاسخ با پیشوند APPROVED_ANSWER_PREFIX نشانه‌گذاری می‌شود
+            تا مدل بداند پاسخ تأییدشده است.
+          - liked=None: رفتار عادی (بدون پیشوند).
 
         استراتژی:
           ۱. تلاش از Redis
@@ -327,6 +333,7 @@ class ConversationService:
                     "duration": m.duration,
                     "error": m.error,
                     "meta_info": m.meta_info or {},
+                    "liked": m.liked,
                     "created_at": m.created_at.isoformat() if m.created_at else None,
                 }
                 for m in reversed(recent)
@@ -345,15 +352,27 @@ class ConversationService:
                         exc,
                     )
 
-        # تبدیل turn ها به پیام‌های (role, content)
+        # تبدیل turn ها به پیام‌های (role, content) با احترام به liked
         history: List[Tuple[str, str]] = []
         for t in turns:
+            liked = t.get("liked")
+
+            # فیلتر: نوبت‌های disliked از تاریخچه حذف می‌شوند
+            if exclude_disliked and liked is False:
+                continue
+
             if t.get("query"):
                 history.append(("user", t["query"]))
+
             if t.get("answer"):
-                history.append(("assistant", t["answer"]))
+                if liked is True:
+                    content = APPROVED_ANSWER_PREFIX + t["answer"]
+                else:
+                    content = t["answer"]
+                history.append(("assistant", content))
+
         return history
-        
+
     @staticmethod
     def set_message_like(
         db: Session,
@@ -367,10 +386,26 @@ class ConversationService:
         db.commit()
         db.refresh(msg)
 
+        # به‌روزرسانی Redis تا liked در تاریخچه بعدی دیده شود.
+        redis_client = _safe_redis_client()
+        if redis_client is not None:
+            try:
+                ConversationCache.upsert_turn(
+                    redis_client,
+                    str(msg.conversation_id),
+                    message_id=str(msg.id),
+                    liked=like_value,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to update cached liked for message %s: %s",
+                    msg.id,
+                    exc,
+                )
+
         if settings.rabbitmq_enabled:
             try:
                 from message_broker import MessageBroker, build_message_row_payload
-                # ← گرفتن conversation یک بار
                 conv = (
                     db.query(Conversation)
                     .filter(Conversation.id == msg.conversation_id)
@@ -378,7 +413,9 @@ class ConversationService:
                 )
                 MessageBroker.publish_to_queue(
                     "like_queue",
-                    build_message_row_payload(msg, app_id=conv.app_id if conv else None),
+                    build_message_row_payload(
+                        msg, app_id=conv.app_id if conv else None
+                    ),
                 )
             except Exception as exc:
                 logger.warning(
@@ -388,7 +425,7 @@ class ConversationService:
                 )
 
         return msg
-    
+
     @staticmethod
     def set_conversation_feedback(
         db: Session,
@@ -421,5 +458,3 @@ class ConversationService:
                 )
 
         return conv
-
-    

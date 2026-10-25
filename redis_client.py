@@ -1,4 +1,4 @@
-
+# redis_client.py
 import json
 import logging
 from typing import Optional, List, Dict, Any
@@ -27,7 +27,7 @@ class ConversationCache:
 
     ساختار کلیدها:
       conv:{conv_id}:meta   -> JSON شامل app_id, tenant_id, user_id, user_name, tenant_desc, status
-      conv:{conv_id}:turns  -> hash با field=message_id و value=JSON({"query","answer","duration","error","meta_info","created_at"})
+      conv:{conv_id}:turns  -> hash با field=message_id و value=JSON({"query","answer","duration","error","meta_info","liked","created_at"})
 
     منبع حقیقت: PostgreSQL.
     Redis صرفاً به‌عنوان کش سریع استفاده می‌شود. در صورت عدم دسترسی،
@@ -81,13 +81,17 @@ class ConversationCache:
         duration: Optional[float] = None,
         error: Optional[str] = None,
         meta_info: Optional[Dict[str, Any]] = None,
+        liked: Optional[bool] = None,
         created_at: Optional[str] = None,
         ttl_seconds: int = settings.redis_ttl_seconds,
     ) -> None:
         """
         درج یا به‌روزرسانی یک turn در hash.
-        - هنگام دریافت query: query پر، answer/duration/error خالی.
+        - هنگام دریافت query: query پر، answer/duration/error/liked خالی.
         - هنگام دریافت answer: فیلدهای اضافه به‌روزرسانی می‌شوند.
+        - هنگام دریافت liked: فقط liked به‌روزرسانی می‌شود (بقیه دست‌نخورده).
+
+        هیچ فیلدی با None بازنویسی نمی‌شود؛ None یعنی «تغییر نده».
         """
         key = ConversationCache._turns_key(conv_id)
         existing_raw = redis_client.hget(key, message_id)
@@ -100,6 +104,7 @@ class ConversationCache:
             "duration": duration if duration is not None else existing.get("duration"),
             "error": error if error is not None else existing.get("error"),
             "meta_info": meta_info if meta_info is not None else existing.get("meta_info", {}),
+            "liked": liked if liked is not None else existing.get("liked"),
             "created_at": created_at if created_at is not None else existing.get("created_at"),
         }
 
@@ -138,6 +143,7 @@ class ConversationCache:
         """
         بازنویسی کل hash برای repopulate از Postgres.
         هر turn باید شامل message_id باشد.
+        اگر liked در turn نباشد، None ذخیره می‌شود.
         """
         key = ConversationCache._turns_key(conv_id)
         pipe = redis_client.pipeline()
