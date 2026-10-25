@@ -1,3 +1,4 @@
+# coordinator/guardrails.py
 """Deterministic, defense-in-depth guardrails for the ERP assistant pipeline.
 
 These controls are not a substitute for ERP authorization, source ACL filtering, or human review.

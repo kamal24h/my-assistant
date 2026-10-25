@@ -1,3 +1,4 @@
+// dotnet/Program.cs.registration.example.cs
 // Add this registration to the existing .NET Program.cs.
 // Keep the Coordinator URL in configuration, not hard-coded in source.
 builder.Services.AddHttpClient<YourApp.Assistant.AssistantCoordinatorClient>(client =>

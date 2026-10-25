@@ -1,3 +1,4 @@
+# coordinator/config.py
 import os
 from pydantic import BaseModel, Field
 
