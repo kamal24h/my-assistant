@@ -1,0 +1,180 @@
+services:
+  # ---------- LLM (Ollama) ----------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: assistant-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_NUM_PARALLEL=2
+      - OLLAMA_MAX_LOADED_MODELS=2      
+    networks:
+      - assistant_network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ---------- Vector DB (Qdrant) ----------
+  qdrant:
+    image: qdrant/qdrant:v1.15.0
+    container_name: assistant-qdrant
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
+    networks:
+      - assistant_network
+
+  # ---------- FastAPI Backend ----------
+  fastapi:
+    build: .
+    container_name: fastapi_backend
+    restart: always
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./docs:/app/docs
+    environment:      
+      - API_KEY=${API_KEY:-${API_Key:-}}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-assistant_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-assistant_db}
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY}
+      - COLLECTION_NAME=${COLLECTION_NAME:-assistant_knowledge1}
+      - OLLAMA_URL=http://ollama:11434
+      - LLM_MODEL=${LLM_MODEL:-qwen3:8b}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-qllama/bge-m3:q4_k_m}
+      - CHUNK_SIZE=${CHUNK_SIZE:-800}
+      - CHUNK_OVERLAP=${CHUNK_OVERLAP:-120}
+      - EMBED_BATCH_SIZE=${EMBED_BATCH_SIZE:-32}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - RABBITMQ_HOST=${RABBITMQ_HOST:-rabbitmq}
+      - RABBITMQ_PORT=${RABBITMQ_PORT:-5672}
+      - RABBITMQ_USER=${RABBITMQ_USER:-admin}
+      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-admin}
+      - RABBITMQ_VHOST=${RABBITMQ_VHOST:-/}
+      - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE:-LogAi}
+      - RABBITMQ_QUEUE=${RABBITMQ_QUEUE:-LogAi}
+      - RABBITMQ_ROUTING_KEY=${RABBITMQ_ROUTING_KEY:-message.created}
+      - RABBITMQ_ENABLED=${RABBITMQ_ENABLED:-true}
+      - RABBITMQ_LIKE_QUEUE=${RABBITMQ_LIKE_QUEUE:-FeedBackLike}
+      - RABBITMQ_CONV_FEEDBACK_QUEUE=${RABBITMQ_CONV_FEEDBACK_QUEUE:-FeedBackScore}      
+    depends_on:
+      - qdrant
+      - ollama
+      - postgres
+      - redis
+    networks:
+      - assistant_network
+
+
+  # ---------- Unified Assistant Coordinator (Phase 1-6) ----------
+  coordinator:
+    build:
+      context: .
+      dockerfile: coordinator/Dockerfile
+    container_name: erp-assistant-coordinator
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8001:8001"
+    environment:
+      PYTHONUNBUFFERED: "1"
+      OLLAMA_BASE_URL: "http://ollama:11434"
+      LOCAL_LLM_MODEL: "${LOCAL_LLM_MODEL:-qwen3:8b}"
+      LOCAL_LLM_TEMPERATURE: "${LOCAL_LLM_TEMPERATURE:-0.2}"
+      LOCAL_LLM_NUM_PREDICT: "${LOCAL_LLM_NUM_PREDICT:-512}"
+      RAG_API_BASE_URL: "http://fastapi:8000"
+      RAG_API_TIMEOUT_SECONDS: "${RAG_API_TIMEOUT_SECONDS:-60}"
+      RAG_API_KEY: "${RAG_API_KEY:-${API_KEY:-${API_Key:-}}}"
+      ROUTER_NUM_PREDICT: "${ROUTER_NUM_PREDICT:-32}"
+      OPENAI_ENABLED: "${OPENAI_ENABLED:-false}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4.1-mini}"
+      OPENAI_TIMEOUT_SECONDS: "${OPENAI_TIMEOUT_SECONDS:-25}"
+      OPENAI_MAX_RETRIES: "${OPENAI_MAX_RETRIES:-1}"
+      OPENAI_MAX_TOKENS: "${OPENAI_MAX_TOKENS:-800}"
+      OPENAI_TEMPERATURE: "${OPENAI_TEMPERATURE:-0.2}"
+      OPENAI_MAX_INPUT_CHARS: "${OPENAI_MAX_INPUT_CHARS:-4000}"
+      OPENAI_MAX_CONCURRENCY: "${OPENAI_MAX_CONCURRENCY:-4}"
+      OPENAI_MAX_REQUESTS_PER_MINUTE: "${OPENAI_MAX_REQUESTS_PER_MINUTE:-30}"
+      ERP_MCP_URL: "${ERP_MCP_URL:-http://erp-mcp:8002/mcp}"
+      ERP_MCP_TIMEOUT_SECONDS: "${ERP_MCP_TIMEOUT_SECONDS:-30}"
+      ERP_MCP_BEARER_TOKEN: "${ERP_MCP_BEARER_TOKEN:-}"
+      ERP_MCP_READ_ONLY_TOOLS: "${ERP_MCP_READ_ONLY_TOOLS:-}"
+      ERP_MCP_WRITE_TOOLS: "${ERP_MCP_WRITE_TOOLS:-}"
+      ERP_MCP_REQUIRE_USER_TOKEN: "${ERP_MCP_REQUIRE_USER_TOKEN:-true}"
+      REDIS_URL: "${REDIS_URL:-redis://redis:6379/0}"
+      APPROVAL_API_KEY: "${APPROVAL_API_KEY:-${RAG_API_KEY:-${API_KEY:-${API_Key:-}}}}"
+      APPROVAL_TTL_SECONDS: "${APPROVAL_TTL_SECONDS:-900}"
+      APPROVAL_ALLOW_SELF_APPROVAL: "${APPROVAL_ALLOW_SELF_APPROVAL:-false}"
+      GUARDRAILS_ENABLED: "${GUARDRAILS_ENABLED:-true}"
+      GUARDRAILS_MAX_PROMPT_CHARS: "${GUARDRAILS_MAX_PROMPT_CHARS:-12000}"
+      GUARDRAILS_MAX_OUTPUT_CHARS: "${GUARDRAILS_MAX_OUTPUT_CHARS:-16000}"
+      GUARDRAILS_MAX_TOOL_RESULT_CHARS: "${GUARDRAILS_MAX_TOOL_RESULT_CHARS:-12000}"
+    depends_on:
+      - fastapi
+      - ollama
+      - redis
+    networks:
+      - assistant_network
+
+  # ---------- Relational DB (PostgreSQL) ----------
+  postgres:
+    image: postgres:16-alpine
+    container_name: assistant-postgres
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-assistant_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-assistant_db}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-assistant_user} -d ${POSTGRES_DB:-assistant_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - assistant_network
+
+  # ---------- Cache (Redis) ----------
+  redis:
+    image: redis:7-alpine
+    container_name: assistant-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks:
+      - assistant_network
+
+volumes:
+  ollama_data:
+  qdrant_data:
+  postgres_data:
+  redis_data:
+
+networks:
+  assistant_network:
+    external: true
