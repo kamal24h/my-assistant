@@ -31,7 +31,9 @@ services:
     networks:
     - assistant_network
   fastapi:
-    build: .
+    build:
+      context: ./src/rag_service
+      dockerfile: Dockerfile
     container_name: fastapi_backend
     restart: always
     ports:
@@ -48,7 +50,7 @@ services:
     - QDRANT_API_KEY=${QDRANT_API_KEY}
     - COLLECTION_NAME=${COLLECTION_NAME:-assistant_knowledge1}
     - OLLAMA_URL=http://ollama:11434
-    - LLM_MODEL=${LLM_MODEL:-qwen3:8b}
+    - LLM_MODEL=${LLM_MODEL:-qwen3.5:9b}
     - EMBEDDING_MODEL=${EMBEDDING_MODEL:-qllama/bge-m3:q4_k_m}
     - CHUNK_SIZE=${CHUNK_SIZE:-800}
     - CHUNK_OVERLAP=${CHUNK_OVERLAP:-120}
@@ -106,8 +108,8 @@ services:
     - assistant_network
   coordinator:
     build:
-      context: .
-      dockerfile: coordinator/Dockerfile
+      context: ./src/coordinator
+      dockerfile: Dockerfile
     container_name: erp-assistant-coordinator
     restart: unless-stopped
     ports:
@@ -115,7 +117,7 @@ services:
     environment:
       PYTHONUNBUFFERED: '1'
       OLLAMA_BASE_URL: http://ollama:11434
-      LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-qwen3:8b}
+      LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-qwen3.5:9b}
       LOCAL_LLM_TEMPERATURE: ${LOCAL_LLM_TEMPERATURE:-0.2}
       LOCAL_LLM_NUM_PREDICT: ${LOCAL_LLM_NUM_PREDICT:-512}
       RAG_API_BASE_URL: http://fastapi:8000
