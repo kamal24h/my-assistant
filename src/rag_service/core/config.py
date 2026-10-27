@@ -24,8 +24,13 @@ class Settings(BaseSettings):
 
     # تنظیمات Ollama و هوش مصنوعی
     ollama_url: str = "http://ollama:11434"
-    llm_model: str = "qwen3:8b"
+    #llm_model: str = "qwen3:8b"
+    llm_model: str = "qwen3.5:9b"
     embedding_model: str = "qllama/bge-m3:q4_k_m"
+
+    # اضافه کردن پارامترهای کانتکست و تولید متن
+    llm_num_ctx: int = 8192
+    llm_temperature: float = 0.3
 
     # تنظیمات Chunker و پردازش اسناد
     chunk_size: int = 800
@@ -40,7 +45,7 @@ class Settings(BaseSettings):
 
     # تنظیمات تاریخچه مکالمه
     # حداکثر تعداد نوبت‌هایی که به LLM داده می‌شود (هر نوبت = query + answer)
-    chat_history_max_turns: int = 5
+    chat_history_max_turns: int = 3
     
     # تنظیمات RabbitMQ
     rabbitmq_host: str = "rabbitmq"
@@ -52,8 +57,8 @@ class Settings(BaseSettings):
     rabbitmq_queue: str = "LogAi"
     rabbitmq_routing_key: str = "message.created"
     rabbitmq_enabled: bool = True
-    rabbitmq_conv_feedback_queue: str = "FeedBackScore"
     rabbitmq_like_queue: str = "FeedBackLike"
+    rabbitmq_conv_feedback_queue: str = "FeedBackScore"
 
     # تولید URL دیتابیس بدون نیاز به ترکیب دستی رشته‌ها
     @computed_field
