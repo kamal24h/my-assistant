@@ -1,6 +1,6 @@
 # دستیار هوشمند ERP — بسته یکپارچه تا پایان فاز هفتم
 
-این بسته، آخرین پروژه Local RAG را به‌عنوان سرویس پایه حفظ می‌کند و Coordinator فازهای ۱ تا ۶ را به همان Compose اضافه می‌کند. APIهای قبلی RAG حذف یا تغییر مسیر داده نشده‌اند؛ فقط endpoint جدید `assistant-turn` برای ذخیره پاسخ‌های تولیدشده توسط Local LLM و ERP MCP اضافه شده است.
+این بسته، آخرین پروژه Local RAG ارسالی را به‌عنوان سرویس پایه حفظ می‌کند و Coordinator فازهای ۱ تا ۶ را به همان Compose اضافه می‌کند. APIهای قبلی RAG حذف یا تغییر مسیر داده نشده‌اند؛ فقط endpoint جدید `assistant-turn` برای ذخیره پاسخ‌های تولیدشده توسط Local LLM و ERP MCP اضافه شده است.
 
 ## ساختار
 
@@ -138,3 +138,17 @@ MCP Server واقعی و ابزارهای نهایی ERP در این ZIP ساخ�
 ## ساختار Monorepo
 
 این نسخه با ساختار جدید در `src/` سازمان‌دهی شده است. جزئیات نگاشت فایل‌ها، محدودیت‌های بازآرایی و مراحل اعتبارسنجی در [`docs/Monorepo_Migration.fa.md`](docs/Monorepo_Migration.fa.md) آمده است.
+
+
+## درگاه مستقل Assistant API با Python/FastAPI
+
+سرویس جدید `src/assistant_api` یک درگاه مستقل برای دستیار است. این سرویس درخواست `POST /api/v1/assistant/chat` را به Coordinator مبتنی بر LangGraph ارسال می‌کند؛ منطق Coordinator و Local RAG و APIهای مدیریت اسناد تغییری نکرده‌اند.
+
+- آدرس روی میزبان: `http://localhost:8003` (به‌صورت پیش‌فرض فقط روی loopback منتشر می‌شود)
+- مستندات Swagger: `http://localhost:8003/docs`
+- سلامت سرویس: `GET /health`
+- چت: `POST /api/v1/assistant/chat`
+- در صورت تنظیم `ASSISTANT_API_KEY` در `.env`، هدر `X-API-Key` الزامی است.
+- توکن کاربر در هدر `Authorization: Bearer ...` بدون تغییر به Coordinator منتقل می‌شود.
+
+پس از تنظیم `.env` اجرا کنید: `docker compose up -d --build assistant-api coordinator fastapi`
