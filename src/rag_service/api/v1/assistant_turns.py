@@ -19,7 +19,9 @@ class AssistantTurnRequest(BaseModel):
     answer: str = Field(min_length=1, max_length=30000)
     tenantId: str = Field(min_length=1, max_length=100)
     userId: str = Field(min_length=1, max_length=200)
-    selectedPath: str = Field(pattern=r"^(local_llm|local_mcp)$")
+    # selectedPath: str = Field(pattern=r"^(local_llm|local_mcp)$")
+    # selectedPath: str = Field(pattern=r"^(local_llm|local_llm_fallback|local_mcp|openai|hybrid|erp_write_pending|erp_write_executed|guardrails_blocked)$")
+    selectedPath: str = Field(min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
     sources: list[dict[str, Any]] = Field(default_factory=list)
     duration: float = Field(ge=0)
 
