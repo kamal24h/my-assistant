@@ -26,7 +26,7 @@ The coordinator graph is: `input_guardrail → (blocked | route) → {local_llm,
 
 4. **`guardrails.py` `_ENTERPRISE_PATTERNS` + `classify_path` interaction.** `force_local=True` is computed but `classify_path` only uses it to demote `openai`. The keyword fallback already returns `local_llm` for most enterprise wording. That's fine, but `assess_input` flags `pii_detected` for any 10–16 digit number, which will catch order numbers/amounts and force local — likely intended, but worth confirming.
 
-5. **`config.py` hardcodes credentials as defaults**: `postgres_password = "aRian2502aSsist2026"`. Should be `Optional[str] = None` with fail-fast, or only in `.env`.
+5. **`config.py` hardcodes credentials as defaults**: `postgres_password = "blahblahblah"`. Should be `Optional[str] = None` with fail-fast, or only in `.env`.
 
 6. **`docker-compose.yml`:**
    - `postgres` port `5432:5432` exposed publicly (should be internal-only).

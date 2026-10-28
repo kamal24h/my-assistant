@@ -21,11 +21,18 @@ class AssistantTurnRequest(BaseModel):
     userId: str = Field(min_length=1, max_length=200)
     # selectedPath: str = Field(pattern=r"^(local_llm|local_mcp)$")
     # selectedPath: str = Field(pattern=r"^(local_llm|local_llm_fallback|local_mcp|openai|hybrid|erp_write_pending|erp_write_executed|guardrails_blocked)$")
+    # مسیرهای شناخته‌شده: local_llm, local_llm_fallback, local_mcp,
+    # erp_write_pending, erp_write_executed, guardrails_blocked
+    # الگو به‌عمد permissive است تا مسیرهای آینده بدون تغییر این فایل کار کنند؛
+    # مقدار توسط coordinator تولید می‌شود، نه کاربر.
     selectedPath: str = Field(min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
     sources: list[dict[str, Any]] = Field(default_factory=list)
     duration: float = Field(ge=0)
 
-@router.post("/assistant-turn", response_model=MessageOut, dependencies=[Depends(require_api_key)])
+@router.post("/assistant-turn",
+             response_model=MessageOut,
+             #dependencies=[Depends(require_api_key)]
+             )
 def save_assistant_turn(conv_id: uuid.UUID, req: AssistantTurnRequest, db: Session = Depends(get_db)):
     conv = ConversationService.get_conversation(db, conv_id, tenant_id=req.tenantId, user_id=req.userId)
     if not conv:

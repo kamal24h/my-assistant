@@ -12,7 +12,9 @@ class Settings(BaseSettings):
 
     # تنظیمات پایگاه داده رابطه‌ای (PostgreSQL)
     postgres_user: str = "assistant_user"
-    postgres_password: str = "aRian2502aSsist2026"
+    # رمز عمداً بدون default است. از .env یا متغیر محیطی خوانده می‌شود.
+    # نبودن آن در startup خطا می‌دهد (fail-fast) تا در محیط ناقص بالا نیاید.
+    postgres_password: Optional[str] = None
     postgres_db: str = "assistant_db"
     postgres_host: str = "postgres"
     postgres_port: int = 5432
@@ -24,7 +26,6 @@ class Settings(BaseSettings):
 
     # تنظیمات Ollama و هوش مصنوعی
     ollama_url: str = "http://ollama:11434"
-    #llm_model: str = "qwen3:8b"
     llm_model: str = "qwen3.5:9b"
     embedding_model: str = "qllama/bge-m3:q4_k_m"
 
@@ -41,12 +42,11 @@ class Settings(BaseSettings):
     redis_host: str = "redis"
     redis_port: int = 6379
     redis_password: Optional[str] = None
-    redis_ttl_seconds: int = 86400  # ۱ روز
+    redis_ttl_seconds: int = 86400
 
     # تنظیمات تاریخچه مکالمه
-    # حداکثر تعداد نوبت‌هایی که به LLM داده می‌شود (هر نوبت = query + answer)
     chat_history_max_turns: int = 3
-    
+
     # تنظیمات RabbitMQ
     rabbitmq_host: str = "rabbitmq"
     rabbitmq_port: int = 5672
@@ -79,5 +79,9 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# بررسی fail-fast در startup (اگر API_KEY ست نشده باشد و DEBUG فعال نباشد)
-# اگر می‌خواهی در dev بدون کلید کار کنی، API_KEY را ست کن یا از APP_ENV=dev استفاده کن
+# Fail-fast: بدون رمز دیتابیس، سرویس نباید بالا بیاید.
+# این بررسی بعد از ساخت settings و قبل از create_engine در core/database.py اجرا می‌شود.
+if not settings.postgres_password:
+    raise RuntimeError(
+        "POSTGRES_PASSWORD تعریف نشده است. آن را در .env یا متغیر محیطی تنظیم کن."
+    )
