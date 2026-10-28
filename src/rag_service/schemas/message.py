@@ -1,4 +1,4 @@
-# schemas/message.py
+# src/rag_service/schemas/message.py
 
 import uuid
 

@@ -1,4 +1,4 @@
-# services/conversation_service.py
+# src/rag_service/services/conversation_service.py
 import logging
 import uuid
 from datetime import datetime

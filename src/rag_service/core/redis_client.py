@@ -1,4 +1,4 @@
-# redis_client.py
+# src/rag_service/core/redis_client.py
 import json
 import logging
 from typing import Optional, List, Dict, Any

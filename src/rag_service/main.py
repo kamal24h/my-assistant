@@ -1,4 +1,4 @@
-# main.py
+# src/rag_service/main.py
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends

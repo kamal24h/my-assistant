@@ -1,3 +1,4 @@
+# src/rag_service/core/security.py
 import logging
 import secrets
 from typing import Optional

@@ -1,3 +1,4 @@
+# src/rag_service/requirements.txt
 fastapi
 uvicorn[standard]
 gunicorn

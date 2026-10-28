@@ -1,4 +1,4 @@
-# services/reranker_service.py
+# src/rag_service/services/reranker_service.py
 """
 سرویس مستقل Reranking با Cross-Encoder.
 

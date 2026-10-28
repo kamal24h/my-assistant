@@ -1,4 +1,4 @@
-# services/intent_classifier.py
+# src/rag_service/services/intent_classifier.py
 import re
 import logging
 from typing import Optional

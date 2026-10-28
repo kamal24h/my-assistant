@@ -1,3 +1,4 @@
+# src/rag_service/core/output_guardrails.py
 """Small local output guard for the standalone RAG service.
 
 Kept service-local so the RAG container does not depend on importing Coordinator code.

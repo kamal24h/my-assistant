@@ -1,3 +1,5 @@
+# src/rag_service/Dockerfile
+
 # syntax=docker/dockerfile:1.7
 # ---------- Stage 1: Builder ----------
 FROM python:3.11-slim AS builder

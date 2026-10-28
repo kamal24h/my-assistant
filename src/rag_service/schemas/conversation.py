@@ -1,4 +1,4 @@
-# schemas/conversation.py
+# src/rag_service/schemas/conversation.py
 import uuid
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Literal

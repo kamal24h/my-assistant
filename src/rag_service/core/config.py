@@ -1,4 +1,4 @@
-# config.py
+# src/rag_service/core/config.py
 import os
 from typing import Optional
 from pydantic import computed_field

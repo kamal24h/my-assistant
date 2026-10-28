@@ -1,3 +1,11 @@
+# src/coordinator/app/services/openai_service.py
+"""OpenAI client with concurrency and rate limiting.
+The service deliberately fails closed when OpenAI is unavailable. It never stores SSO
+access tokens, and audit events omit tool arguments and business payloads.
+The service is designed to be used in a FastAPI dependency context, and it is not thread-safe outside of that context. It is not intended for use in a multi-process
+deployment without an external rate-limiting mechanism, as the in-memory rate limit is per-process.
+"""
+
 import asyncio
 import logging
 import time

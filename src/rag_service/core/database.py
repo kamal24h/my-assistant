@@ -1,4 +1,4 @@
-# database.py
+# src/rag_service/core/database.py
 import uuid
 from datetime import datetime
 

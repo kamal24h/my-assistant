@@ -1,4 +1,4 @@
-# scripts/reingest_current_documents.py
+# src/rag_service/scripts/reingest_current_documents.py
 """
 یک‌بار اجرا شود تا به metadata وکتورهای موجود، فیلدهای نسخه‌بندی اضافه شود.
 از set_payload استفاده می‌کند؛ embedding دوباره محاسبه نمی‌شود.

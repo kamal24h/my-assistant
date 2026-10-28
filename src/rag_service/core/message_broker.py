@@ -1,4 +1,4 @@
-# message_broker.py
+# src/rag_service/core/message_broker.py
 import json
 import logging
 from datetime import datetime

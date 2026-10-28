@@ -1,3 +1,4 @@
+# src/coordinator/app/services/sanitization.py
 """Conservative text sanitization before optional external-model calls.
 
 Pattern masking is defense-in-depth, not a guarantee that text is anonymous.

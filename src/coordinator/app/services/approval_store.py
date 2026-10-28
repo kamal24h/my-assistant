@@ -1,3 +1,4 @@
+# src/coordinator/app/services/approval_store.py
 """Redis-backed, expiring store for human-approved ERP write operations.
 
 The store deliberately fails closed when Redis is unavailable. It never stores SSO

@@ -1,3 +1,4 @@
+# src/assistant_api/app/main.py
 """Public Python/FastAPI gateway for ERP Smart Assistant.
 
 The gateway deliberately delegates orchestration to the existing Coordinator and

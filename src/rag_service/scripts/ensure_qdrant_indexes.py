@@ -1,4 +1,4 @@
-# scripts/ensure_qdrant_indexes.py
+# src/rag_service/scripts/ensure_qdrant_indexes.py
 import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))

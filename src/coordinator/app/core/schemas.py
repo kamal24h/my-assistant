@@ -1,3 +1,4 @@
+# src/coordinator/app/core/schemas.py
 from typing import Any, Optional
 from uuid import UUID, uuid4
 

@@ -1,4 +1,4 @@
-# services/rag_service.py
+# src/rag_service/services/rag_service.py
 from typing import List, Tuple, Dict, Any, Optional
 
 from langchain_ollama import ChatOllama, OllamaEmbeddings

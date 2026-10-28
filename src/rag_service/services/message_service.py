@@ -1,4 +1,4 @@
-# services/message_service.py
+# src/rag_service/services/message_service.py
 
 import uuid
 

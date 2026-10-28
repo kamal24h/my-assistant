@@ -1,4 +1,4 @@
-# api/v1/documents.py
+# src/rag_service/api/v1/documents.py
 import hashlib
 import json
 import logging

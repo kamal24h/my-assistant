@@ -1,3 +1,4 @@
+# src/coordinator/app/services/mcp_client.py
 """MCP Streamable HTTP client with separate read/write tool policies.
 
 Read tools require an explicit read-only hint or administrator allowlist. Write tools
