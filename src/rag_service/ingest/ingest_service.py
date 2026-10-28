@@ -174,7 +174,7 @@ def process_and_index_document(
         "content_hash": content_hash,
         "doc_name": doc_name,
         "department": department,
-        "app_id": app_id,        
+        "app_id": app_id,
     }
 
     chunks = _split_and_enrich(raw_documents, base_metadata)
@@ -223,7 +223,7 @@ def process_and_index_text_document(
         "is_current": is_current,
         "content_hash": content_hash,
         "doc_name": doc_name,
-        "app_id": app_id,        
+        "app_id": app_id,
     }
 
     chunks = _split_and_enrich([document], base_metadata)
@@ -291,14 +291,14 @@ def delete_document_vectors_by_logical_id(logical_doc_id: str):
 def delete_document_vectors(doc_id: str):
     """برای سازگاری با کد قبلی."""
     return delete_document_vectors_by_doc_id(doc_id)
-  
+
 
 def mark_version_not_current(logical_doc_id: str, version: int) -> None:
     """
     فلگ metadata.is_current وکتورهای یک نسخه خاص را False می‌کند.
     برای همگام‌سازی Qdrant با Postgres هنگام ساخت نسخه جدید لازم است.
     """
-    
+
     client = get_qdrant_client()
     if not client.collection_exists(settings.collection_name):
         return
@@ -356,6 +356,58 @@ def delete_document_vectors_by_app_id(app_id: str) -> None:
 
     client.delete(
         collection_name=settings.collection_name,
+        points_selector=Filter(
+            must=[
+                FieldCondition(
+                    key="metadata.app_id",
+                    match=MatchValue(value=app_id),
+                )
+            ]
+        ),
+    )
+
+
+# ---------- Soft-disable / rollback helpers (برای create-text امن) ----------
+
+def set_documents_not_current_by_app(app_id: str) -> None:
+    """
+    همه وکتورهای یک app_id را is_current=False می‌کند (soft-disable).
+    هدف: در جایگزینی کامل اسناد متنی، قبل از commit نهایی، وکتورهای قدیمی
+    از دید بازیابی RAG حذف شوند. اگر مرحله بعدی شکست بخورد، می‌توان با
+    set_documents_current_by_app وضعیت را برگرداند.
+    """
+    client = get_qdrant_client()
+    if not client.collection_exists(settings.collection_name):
+        return
+
+    client.set_payload(
+        collection_name=settings.collection_name,
+        payload={"is_current": False},
+        key="metadata",
+        points_selector=Filter(
+            must=[
+                FieldCondition(
+                    key="metadata.app_id",
+                    match=MatchValue(value=app_id),
+                )
+            ]
+        ),
+    )
+
+
+def set_documents_current_by_app(app_id: str) -> None:
+    """
+    برگشت soft-disable برای همه وکتورهای یک app_id.
+    فقط در مسیر rollback استفاده می‌شود (best-effort).
+    """
+    client = get_qdrant_client()
+    if not client.collection_exists(settings.collection_name):
+        return
+
+    client.set_payload(
+        collection_name=settings.collection_name,
+        payload={"is_current": True},
+        key="metadata",
         points_selector=Filter(
             must=[
                 FieldCondition(

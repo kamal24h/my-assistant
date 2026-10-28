@@ -41,7 +41,6 @@ ROUTER_PROMPT = """وظیفه تو فقط انتخاب مسیر برای سؤا�
 سؤال کاربر: {question}
 مسیر:"""
 
-
 class GraphState(TypedDict, total=False):
     request: ChatRequest
     selected_path: str
