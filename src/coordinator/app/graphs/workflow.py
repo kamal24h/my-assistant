@@ -63,6 +63,50 @@ class RagApiError(Exception):
         super().__init__(code)
 
 
+def _extract_json(raw: str) -> dict:
+    """استخراج مقاوم اولین آبجکت JSON متوازن از خروجی مدل.
+
+    اگر مدل چند JSON یا آرایه بدهد، اولین آبجکت dict متوازن برگردانده می‌شود.
+    """
+    raw = raw.strip()
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+    start = raw.find("{")
+    if start < 0:
+        return {}
+    depth = 0
+    in_str = False
+    esc = False
+    for i in range(start, len(raw)):
+        c = raw[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+        else:
+            if c == '"':
+                in_str = True
+            elif c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        candidate = json.loads(raw[start:i + 1])
+                        if isinstance(candidate, dict):
+                            return candidate
+                    except json.JSONDecodeError:
+                        pass
+                    return {}
+    return {}
+
 
 def get_local_llm_chain():
     prompt = ChatPromptTemplate.from_messages(
@@ -259,12 +303,10 @@ async def select_erp_tool(question: str, tools: list[dict[str, Any]]) -> dict[st
         model=settings.local_llm_model, base_url=settings.ollama_base_url,
         temperature=0, num_predict=256,
     ) | StrOutputParser()
+    
     raw = (await chain.ainvoke({"question": question, "tools": json.dumps(compact_tools, ensure_ascii=False)})).strip()
-    try:
-        start, end = raw.find("{"), raw.rfind("}")
-        parsed = json.loads(raw[start:end + 1]) if start >= 0 and end > start else {}
-    except (ValueError, json.JSONDecodeError) as exc:
-        raise McpClientError("invalid_erp_tool_selection") from exc
+    parsed = _extract_json(raw)
+    
     allowed_names = {tool["name"] for tool in tools}
     if parsed.get("name") not in allowed_names or not isinstance(parsed.get("arguments", {}), dict):
         raise McpClientError("no_matching_erp_tool")
@@ -775,4 +817,5 @@ async def reject_erp_operation(
         raise
     except ApprovalStoreError as exc:
         raise HTTPException(status_code=503, detail={"code": "approval_store_unavailable"}) from exc
+
 

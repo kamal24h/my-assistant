@@ -25,6 +25,8 @@ class MessageBroker:
 
     @staticmethod
     def _build_connection() -> pika.BlockingConnection:
+        if not settings.rabbitmq_password:
+            raise RuntimeError("RABBITMQ_PASSWORD تعریف نشده است.")
         credentials = pika.PlainCredentials(
             settings.rabbitmq_user,
             settings.rabbitmq_password,

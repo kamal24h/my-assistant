@@ -56,7 +56,7 @@ class ConversationOut(BaseModel):
 
 
 class ConversationDetailOut(ConversationOut):
-    messages: List[MessageOut] = []
+    messages: List[MessageOut] = Field(default_factory=list)
 
 
 class SendMessageRequest(BaseModel):

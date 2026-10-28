@@ -51,14 +51,14 @@ class Settings(BaseSettings):
     rabbitmq_host: str = "rabbitmq"
     rabbitmq_port: int = 5672
     rabbitmq_user: str = "admin"
-    rabbitmq_password: str = "admin"
+    rabbitmq_password: Optional[str] = None
     rabbitmq_vhost: str = "/"
     rabbitmq_exchange: str = "LogAi"
     rabbitmq_queue: str = "LogAi"
     rabbitmq_routing_key: str = "message.created"
     rabbitmq_enabled: bool = True
-    rabbitmq_like_queue: str = "FeedBackLike"
-    rabbitmq_conv_feedback_queue: str = "FeedBackScore"
+    rabbitmq_like_queue: str = "like_queue"
+    rabbitmq_conv_feedback_queue: str = "conv_feedback"
 
     # تولید URL دیتابیس بدون نیاز به ترکیب دستی رشته‌ها
     @computed_field
@@ -84,4 +84,9 @@ settings = Settings()
 if not settings.postgres_password:
     raise RuntimeError(
         "POSTGRES_PASSWORD تعریف نشده است. آن را در .env یا متغیر محیطی تنظیم کن."
+    )
+if settings.rabbitmq_enabled and not settings.rabbitmq_password:
+    raise RuntimeError(
+        "RABBITMQ_PASSWORD تعریف نشده است در حالی که RABBITMQ_ENABLED=true است. "
+        "آن را در .env یا متغیر محیطی تنظیم کن یا RABBITMQ_ENABLED=false کن."
     )

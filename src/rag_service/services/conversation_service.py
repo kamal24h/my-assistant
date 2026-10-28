@@ -412,7 +412,7 @@ class ConversationService:
                     .first()
                 )
                 MessageBroker.publish_to_queue(
-                    "like_queue",
+                    settings.rabbitmq_like_queue,
                     build_message_row_payload(
                         msg, app_id=conv.app_id if conv else None
                     ),
@@ -447,7 +447,7 @@ class ConversationService:
                     build_conversation_row_payload,
                 )
                 MessageBroker.publish_to_queue(
-                    "conv_feedback",
+                    settings.rabbitmq_conv_feedback_queue
                     build_conversation_row_payload(conv),
                 )
             except Exception as exc:
