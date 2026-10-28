@@ -183,11 +183,12 @@ def process_and_index_document(
 
     vector_store = _get_vector_store()
 
-    # point_id deterministic برای هر (logical_doc_id, version)
-    point_id = make_point_id(logical_doc_id, version)
-    # همه chunk ها id یکتا می‌خواهند؛ از point_id مشتق می‌کنیم.
-    chunk_ids = [f"{point_id}" if i == 0 else f"{point_id}-{i}" for i in range(len(chunks))]
-    # ولی Qdrant فقط UUID یا int قبول می‌کند. پس UUIDv5 دوم بسازیم:
+    # # point_id deterministic برای هر (logical_doc_id, version)
+    # point_id = make_point_id(logical_doc_id, version)
+    # # همه chunk ها id یکتا می‌خواهند؛ از point_id مشتق می‌کنیم.
+    # chunk_ids = [f"{point_id}" if i == 0 else f"{point_id}-{i}" for i in range(len(chunks))]
+    # # ولی Qdrant فقط UUID یا int قبول می‌کند. پس UUIDv5 دوم بسازیم:
+    
     chunk_ids = [
         str(uuid.uuid5(POINT_ID_NAMESPACE, f"{logical_doc_id}:{version}:chunk:{i}"))
         for i in range(len(chunks))
