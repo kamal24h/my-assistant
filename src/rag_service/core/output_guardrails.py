@@ -2,7 +2,9 @@
 """Small local output guard for the standalone RAG service.
 
 Kept service-local so the RAG container does not depend on importing Coordinator code.
-Keep its secret patterns aligned with Coordinator guardrails during future shared-policy refactoring.
+⚠️  الگوهای زیر باید با src/coordinator/app/core/guardrails.py هم‌راستا بمانند.
+    هنگام تغییر، هر دو فایل را هم‌زمان به‌روزرسانی کن.
+    TODO: در آینده به یک پکیج مشترک (مثلاً shared/guardrails) منتقل شود.
 """
 from __future__ import annotations
 import re

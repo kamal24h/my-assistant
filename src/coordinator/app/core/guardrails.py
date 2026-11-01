@@ -23,8 +23,10 @@ _ENTERPRISE_PATTERNS = (
 )
 _PII_PATTERNS = (
     re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
-    re.compile(r"(?<!\w)\+?\d[\d\s().-]{7,}\d(?!\w)"),
-    re.compile(r"(?<!\d)\d{10,16}(?!\d)"),
+    # شماره تلفن با فرمت واضح (شروع با + یا 09)
+    re.compile(r"(?<!\w)(?:\+?\d{1,3}[\s.-]?)?0?9\d{2}[\s.-]?\d{3}[\s.-]?\d{4}(?!\w)"),
+    # شناسه عددی پیوسته (کد ملی/کارت) بدون جداکننده
+    re.compile(r"(?<![\d,])\d{10,16}(?![\d,])"),
 )
 _SECRET_REQUEST_PATTERNS = (
     re.compile(r"\b(?:api[_ -]?key|access[_ -]?token|password|secret key|private key)\b", re.I),
