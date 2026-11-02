@@ -447,7 +447,7 @@ class ConversationService:
                     build_conversation_row_payload,
                 )
                 MessageBroker.publish_to_queue(
-                    settings.rabbitmq_conv_feedback_queue
+                    settings.rabbitmq_conv_feedback_queue,
                     build_conversation_row_payload(conv),
                 )
             except Exception as exc:
