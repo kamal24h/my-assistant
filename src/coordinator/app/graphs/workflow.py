@@ -916,14 +916,11 @@ async def mcp_health():
 
 async def _evaluate_clarification_before_run(
     req: ChatRequest,
-    # authorization: str | None,
-    # *,
-    # is_stream: bool,
-) -> tuple[ChatRequest, str, dict[str, Any] | None]:
-    """قبل از اجرای گراف/استریم، بررسی می‌کند:
+) -> tuple[ChatRequest, str, dict[str, Any] | None, UUID | None]:
+    """قبل از اجرای گراف/استریم بررسی می‌کند:
       ۱. اگر pending clarification در Redis هست، prompt را با context قبلی merge می‌کند.
       ۲. اگر نیاز به clarification هست، dict بازگشتی حاوی سؤال است.
-    خروجی: (req_effective, selected_intent, clarification_payload_or_None)
+    خروجی: (req_effective, selected_intent, clarification_payload_or_None, resolved_conversation_id)
     """
     # ۱. Resume
     pending = await _load_pending_clarification(req.conversationId)
@@ -939,16 +936,16 @@ async def _evaluate_clarification_before_run(
 
     if blocked:
         return (req, "guardrails_blocked", {
-            "clarificationId": None,  # نال چون clarification نیست
+            "clarificationId": None,
             "question": "نمی‌توانم پیام‌های سیستمی داخلی، کلیدها یا اطلاعات احراز هویت محرمانه را افشا کنم. "
                         "اگر به دسترسی نیاز دارید، از مسیر رسمی مدیریت دسترسی سازمان استفاده کنید.",
             "missingFields": [],
             "intent": "guardrails_blocked",
             "is_blocked": True,
-        })
-    
+        }, req.conversationId)
+
     if assessment and (assessment.injection_suspected or assessment.secret_request):
-        return (req, "local_llm", None)
+        return (req, "local_llm", None, req.conversationId)
     force_local = bool(assessment and assessment.force_local)
     try:
         selected = await classify_path(req.prompt, force_local=force_local)
@@ -960,9 +957,24 @@ async def _evaluate_clarification_before_run(
     if settings.clarification_enabled:
         need_clar, missing, clar_question = _needs_clarification(req.prompt, selected)
         if need_clar:
+            # اگر conversationId نداریم، قبل از ذخیره clarification یک مکالمه بسازیم
+            resolved_conversation_id = req.conversationId
+            if resolved_conversation_id is None:
+                try:
+                    async with httpx.AsyncClient(timeout=settings.rag_api_timeout_seconds) as client:
+                        resolved_conversation_id = await _ensure_conversation(client, req)
+                except RagApiError as exc:
+                    logger.error(
+                        "Failed to create conversation before clarification: %s", exc.code
+                    )
+                    # بدون conversationId، clarification قابل ذخیره نیست؛
+                    # مسیر عادی را ادامه می‌دهیم تا پاسخ کامل برگردد.
+                    return (req, selected, None, None)
+                req = req.model_copy(update={"conversationId": resolved_conversation_id})
+
             clarification_id = uuid4()
             await _save_pending_clarification(
-                conversation_id=req.conversationId,
+                conversation_id=resolved_conversation_id,
                 intent=selected,
                 original_prompt=req.prompt,
                 missing_fields=missing,
@@ -974,9 +986,9 @@ async def _evaluate_clarification_before_run(
                 "question": clar_question,
                 "missingFields": missing,
                 "intent": selected,
-            })
+            }, resolved_conversation_id)
 
-    return (req, selected, None)
+    return (req, selected, None, req.conversationId)
 
 
 # ---------------------------------------------------------
@@ -988,7 +1000,7 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
     if authorization and not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail={"code": "invalid_authorization_scheme"})
 
-    req_effective, selected, clar_payload = await _evaluate_clarification_before_run(req)
+    req_effective, selected, clar_payload, resolved_conversation_id = await _evaluate_clarification_before_run(req)
 
     # if clar_payload and clar_payload.get("is_blocked"):
     # # persist blocked (در blocked_node هم انجام می‌شد؛ این‌جا یک‌بار)
@@ -999,7 +1011,7 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
     if clar_payload is not None:
         return ChatResponse(
             requestId=req.requestId,
-            conversationId=req.conversationId,
+            conversationId=resolved_conversation_id,   # ← حالا معتبر است
             messageId=None,
             status="needs_clarification",
             answer=clar_payload["question"],
@@ -1103,7 +1115,7 @@ async def _stream_chat(req: ChatRequest, authorization: str | None, request: Req
     """
     started = time.perf_counter()
 
-    req_effective, selected, clar_payload = await _evaluate_clarification_before_run(req)
+    req_effective, selected, clar_payload, resolved_conversation_id = await _evaluate_clarification_before_run(req)
 
     # clarification
     if clar_payload is not None:
@@ -1115,7 +1127,7 @@ async def _stream_chat(req: ChatRequest, authorization: str | None, request: Req
         })
         yield _sse_event("done", {
             "requestId": str(req.requestId),
-            "conversationId": str(req.conversationId) if req.conversationId else None,
+            "conversationId": str(resolved_conversation_id) if resolved_conversation_id else None,  # ← حالا معتبر
             "selectedPath": clar_payload["intent"],
             "status": "needs_clarification",
             "answer": clar_payload["question"],
