@@ -10,10 +10,11 @@ import hmac
 import os
 from contextlib import asynccontextmanager
 from typing import Any
+from uuid import UUID
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 COORDINATOR_URL = os.getenv("COORDINATOR_URL", "http://coordinator:8001").rstrip("/")
 ASSISTANT_API_KEY = os.getenv("ASSISTANT_API_KEY", "").strip()
@@ -31,6 +32,17 @@ class ChatRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=12000)
     locale: str = Field(default="fa-IR", max_length=20)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("requestId", "conversationId", "messageId")
+    @classmethod
+    def _validate_uuid_format(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            UUID(value)
+        except (ValueError, TypeError) as exc:
+            raise ValueError("must be a valid UUID string") from exc
+        return value
 
 
 @asynccontextmanager

@@ -215,18 +215,25 @@ async def classify_path(
 # Clarification detection (گزینه A — قاعده‌محور)
 # ---------------------------------------------------------
 
-_CRITICAL_FIELDS_BY_INTENT = {
-    "erp_write": ["order_id", "entity", "reason"],
-    "local_mcp": ["entity_or_id"],
-}
+# _CRITICAL_FIELDS_BY_INTENT = {
+#     "erp_write": ["order_id", "entity", "reason"],
+#     "local_mcp": ["entity_or_id"],
+# }
 
 _ID_PATTERNS = (
     re.compile(r"\b(?:SO|PO|INV|ORD|PR)-?\d{3,}\b", re.I),
     re.compile(r"\b\d{4,}\b"),
 )
+
 _ENTITY_HINTS = (
     "سفارش", "فاکتور", "درخواست", "محصول", "کالا", "انبار", "مشتری",
     "order", "invoice", "product", "item",
+)
+
+_REASON_HINTS = (
+    "به دلیل", "به‌دلیل", "بخاطر", "به خاطر", "چون", "زیرا",
+    "دلیل:", "دلیل :", "علت:", "علت :", "جهت", "به منظور",
+    "برای اینکه", "because", "reason:", "due to",
 )
 
 
@@ -236,6 +243,38 @@ def _has_identifier(text: str) -> bool:
 
 def _has_entity_hint(text: str) -> bool:
     return any(h in text.casefold() for h in _ENTITY_HINTS)
+
+
+def _extract_reason(prompt: str, max_chars: int = 500) -> str:
+    """استخراج heuristic دلیل از prompt برای نمایش به approver.
+
+    این تابع فقط یک heuristic است — اگر دلیل با کلمات کلیدی شروع نشود،
+    ممکن است استخراج نشود. در این حالت، prompt کامل در record ذخیره می‌شود
+    و approver می‌تواند از آن استفاده کند.
+    """
+    text = prompt.strip()
+    if not text:
+        return ""
+    lowered = text.casefold()
+    for hint in _REASON_HINTS:
+        idx = lowered.find(hint)
+        if idx < 0:
+            continue
+        # از hint تا انتهای جمله یا حداکثر max_chars
+        fragment = text[idx:]
+        # قطع در اولین نقطه/ویرگول/خط جدید بعد از hint
+        for sep in (".", "،", "\n", "؛", "!", "?"):
+            sep_idx = fragment.find(sep, len(hint))
+            if sep_idx > 0:
+                fragment = fragment[:sep_idx]
+                break
+        return fragment.strip()[:max_chars]
+    return ""
+
+
+def _has_reason_hint(text: str) -> bool:
+    lowered = text.casefold()
+    return any(hint in lowered for hint in _REASON_HINTS)
 
 
 def _needs_clarification(
@@ -269,13 +308,15 @@ def _needs_clarification(
             missing.append("order_id")
         if not _has_entity_hint(text):
             missing.append("entity")
+        has_reason = _has_reason_hint(text)
         if missing:
             pieces = []
             if "order_id" in missing:
                 pieces.append("شماره سفارش/فاکتور")
             if "entity" in missing:
                 pieces.append("نوع موجودیت (سفارش خرید، سفارش فروش، فاکتور و…)")
-            pieces.append("دلیل/توضیح مختصر")
+            if not has_reason:
+                pieces.append("دلیل/توضیح مختصر")
             return (
                 True,
                 missing,
@@ -729,6 +770,7 @@ def build_graph():
             "tenantId": req.tenantId,
             "userId": req.userId,
             "prompt": req.prompt,
+            "reason": _extract_reason(req.prompt),
             "toolName": selected["name"],
             "arguments": selected["arguments"],
             "status": "pending",
@@ -1108,9 +1150,10 @@ async def _stream_chat(req: ChatRequest, authorization: str | None, request: Req
     """async generator رویدادهای SSE:
       event: start          → requestId, conversationId, selectedPath
       event: clarification  → question, missingFields, clarificationId (در صورت ابهام)
+      event: path_changed   → from, to, reason (در صورت تغییر مسیر در طول streaming)
       event: token          → delta (چند بار)
       event: sources        → sources
-      event: done           → answer, status
+      event: done           → answer, status, selectedPath (نهایی), fallbackFrom (اختیاری)
       event: error          → code, message
     """
     started = time.perf_counter()
@@ -1127,7 +1170,7 @@ async def _stream_chat(req: ChatRequest, authorization: str | None, request: Req
         })
         yield _sse_event("done", {
             "requestId": str(req.requestId),
-            "conversationId": str(resolved_conversation_id) if resolved_conversation_id else None,  # ← حالا معتبر
+            "conversationId": str(resolved_conversation_id) if resolved_conversation_id else None,
             "selectedPath": clar_payload["intent"],
             "status": "needs_clarification",
             "answer": clar_payload["question"],
@@ -1136,8 +1179,11 @@ async def _stream_chat(req: ChatRequest, authorization: str | None, request: Req
 
     # conversation
     try:
-        async with httpx.AsyncClient(timeout=settings.rag_api_timeout_seconds) as client:
-            conversation_id = await _ensure_conversation(client, req_effective)
+        if resolved_conversation_id is not None:
+            conversation_id = resolved_conversation_id
+        else:
+            async with httpx.AsyncClient(timeout=settings.rag_api_timeout_seconds) as client:
+                conversation_id = await _ensure_conversation(client, req_effective)
     except RagApiError as exc:
         yield _sse_event("error", {"code": exc.code, "message": "ساخت مکالمه ناموفق بود."})
         return
@@ -1151,13 +1197,14 @@ async def _stream_chat(req: ChatRequest, authorization: str | None, request: Req
 
     full_answer = ""
     sources: list[dict[str, Any]] = []
+    fallback_from: str | None = None
 
     try:
         if selected == "guardrails_blocked":
             full_answer = (
                 "نمی‌توانم پیام‌های سیستمی داخلی، کلیدها یا اطلاعات احراز هویت محرمانه را افشا کنم. "
                 "اگر به دسترسی نیاز دارید، از مسیر رسمی مدیریت دسترسی سازمان استفاده کنید."
-            )            
+            )
             for piece in _chunk_text(full_answer):
                 if await request.is_disconnected():
                     logger.info("Client disconnected during %s simulated stream", selected)
@@ -1187,15 +1234,32 @@ async def _stream_chat(req: ChatRequest, authorization: str | None, request: Req
                         return
                     full_answer += delta
                     yield _sse_event("token", {"delta": delta})
-            except OpenAIUnavailable:
-                logger.info("OpenAI stream unavailable; fallback to local LLM")
+            except OpenAIUnavailable as exc:
+                if full_answer:
+                    # بخشی از پاسخ از OpenAI رسیده؛ ادامه‌دادن با local_llm باعث
+                    # متن دوگانه می‌شود. صریح خطا بده.
+                    logger.warning(
+                        "OpenAI stream failed after partial output (%d chars); aborting",
+                        len(full_answer),
+                    )
+                    yield _sse_event("error", {
+                        "code": "openai_stream_interrupted",
+                        "message": "پاسخ مدل ابری نیمه‌کاره ماند. لطفاً دوباره تلاش کنید.",
+                    })
+                    return
+                logger.info("OpenAI stream unavailable; fallback to local LLM: %s", exc)
+                fallback_from = "openai"
                 selected = "local_llm_fallback"
+                yield _sse_event("path_changed", {
+                    "from": "openai",
+                    "to": "local_llm_fallback",
+                    "reason": "openai_unavailable",
+                })
                 async for delta in _stream_local_llm(req_effective.prompt):
                     if await request.is_disconnected():
                         return
                     full_answer += delta
                     yield _sse_event("token", {"delta": delta})
-
         elif selected == "local_rag":
             _, _mid, rag_answer, rag_sources = await invoke_rag_api(req_effective)
             full_answer = rag_answer
@@ -1227,6 +1291,9 @@ async def _stream_chat(req: ChatRequest, authorization: str | None, request: Req
                 full_answer, _ = guard_output(full_answer, settings.guardrails_max_output_chars)
             sources = [{"type": "erp_mcp", "tool": selected_tool["name"]}]
             for piece in _chunk_text(full_answer):
+                if await request.is_disconnected():
+                    logger.info("Client disconnected during %s simulated stream", selected)
+                    return
                 yield _sse_event("token", {"delta": piece})
 
         elif selected == "erp_write":
@@ -1249,6 +1316,7 @@ async def _stream_chat(req: ChatRequest, authorization: str | None, request: Req
                 "tenantId": req_effective.tenantId,
                 "userId": req_effective.userId,
                 "prompt": req_effective.prompt,
+                "reason": _extract_reason(req_effective.prompt),   # ← جدید
                 "toolName": selected_tool["name"],
                 "arguments": selected_tool["arguments"],
                 "status": "pending",
@@ -1300,13 +1368,16 @@ async def _stream_chat(req: ChatRequest, authorization: str | None, request: Req
 
     if sources:
         yield _sse_event("sources", {"sources": sources})
-    yield _sse_event("done", {
+    done_event: dict[str, Any] = {
         "requestId": str(req.requestId),
         "conversationId": str(conversation_id),
         "selectedPath": selected,
         "status": "completed",
         "answer": full_answer,
-    })
+    }
+    if fallback_from is not None:
+        done_event["fallbackFrom"] = fallback_from
+    yield _sse_event("done", done_event)
 
 
 # ---------------------------------------------------------
@@ -1349,6 +1420,25 @@ def _validate_approver(authorization: str | None, request: ApprovalActionRequest
         raise HTTPException(status_code=401, detail={"code": "approver_identity_required"})
 
 
+async def _check_and_mark_expired(
+    record: dict[str, Any],
+    request: ApprovalActionRequest,
+) -> None:
+    """اگر approval منقضی شده، آن را expired علامت می‌زند و 410 می‌دهد."""
+    expires_at = datetime.fromisoformat(record["expiresAt"])
+    if expires_at <= datetime.now(timezone.utc):
+        record["status"] = "expired"
+        record["completedAt"] = datetime.now(timezone.utc).isoformat()
+        await approval_store.save(record)
+        await approval_store.audit({
+            "event": "expired", "approvalId": record["approvalId"],
+            "tenantId": record["tenantId"],
+            "approverUserId": request.approverUserId,
+            "at": record["completedAt"],
+        })
+        raise HTTPException(status_code=410, detail={"code": "approval_expired"})
+
+
 @app.get("/api/v1/erp/approvals/{approval_id}", tags=["ERP Approvals"])
 async def get_erp_approval(
     approval_id: UUID,
@@ -1366,6 +1456,7 @@ async def get_erp_approval(
         "approvalId": record["approvalId"], "status": record["status"],
         "tenantId": record["tenantId"], "requesterUserId": record["userId"],
         "conversationId": record["conversationId"], "prompt": record["prompt"],
+        "reason": record.get("reason", ""),
         "toolName": record["toolName"], "arguments": record["arguments"],
         "createdAt": record["createdAt"], "expiresAt": record["expiresAt"],
         "approvedBy": record.get("approvedBy"), "completedAt": record.get("completedAt"),
@@ -1395,18 +1486,9 @@ async def approve_erp_operation(
                     status_code=409,
                     detail={"code": "approval_not_pending", "status": record.get("status")},
                 )
-            expires_at = datetime.fromisoformat(record["expiresAt"])
-            if expires_at <= datetime.now(timezone.utc):
-                record["status"] = "expired"
-                record["completedAt"] = datetime.now(timezone.utc).isoformat()
-                await approval_store.save(record)
-                await approval_store.audit({
-                    "event": "expired", "approvalId": str(approval_id),
-                    "tenantId": request.tenantId,
-                    "approverUserId": request.approverUserId,
-                    "at": record["completedAt"],
-                })
-                raise HTTPException(status_code=410, detail={"code": "approval_expired"})
+                        
+            await _check_and_mark_expired(record, request)
+            
             if not settings.approval_allow_self_approval and request.approverUserId == record.get("userId"):
                 raise HTTPException(status_code=403, detail={"code": "self_approval_not_allowed"})
 
@@ -1533,6 +1615,7 @@ async def reject_erp_operation(
                     status_code=409,
                     detail={"code": "approval_not_pending", "status": record.get("status")},
                 )
+            await _check_and_mark_expired(record, request)
             record.update({
                 "status": "rejected", "approvedBy": request.approverUserId,
                 "approvalComment": request.comment,
@@ -1556,5 +1639,3 @@ async def reject_erp_operation(
         raise
     except ApprovalStoreError as exc:
         raise HTTPException(status_code=503, detail={"code": "approval_store_unavailable"}) from exc
-
-
