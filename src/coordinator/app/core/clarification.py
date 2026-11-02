@@ -10,6 +10,8 @@
     و تصمیم را به LLM می‌سپارد.
   - سؤال‌های erp_write هرگز clarification نمی‌گیرند (این در workflow چک می‌شود).
   - خروجی heuristic: "clear" | "ambiguous" | "uncertain"
+
+بک لاگ: فعلاً توابع این کلاس در workflow پیاده سازی شده اند و بعداً از این کلاس هم استفاده خواهم کرد. 
 """
 from __future__ import annotations
 

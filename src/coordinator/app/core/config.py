@@ -36,26 +36,51 @@ class CoordinatorSettings(BaseModel):
         default_factory=lambda: int(os.getenv("ROUTER_NUM_PREDICT", "32")),
         ge=1,
         le=256,
-    )    
-    # --- Clarification (پرسش تکمیلی برای سؤال مبهم) ---
+    )
+    
+    # --- Streaming (SSE) ---
+    sse_heartbeat_interval_seconds: float = Field(
+        default_factory=lambda: float(os.getenv("SSE_HEARTBEAT_INTERVAL_SECONDS", "15")),
+        gt=0, le=120,
+    )
+    sse_stream_timeout_seconds: float = Field(
+        default_factory=lambda: float(os.getenv("SSE_STREAM_TIMEOUT_SECONDS", "300")),
+        gt=0, le=3600,
+    )
+
+    # --- Clarification ---
+    clarification_ttl_seconds: int = Field(
+        default_factory=lambda: int(os.getenv("CLARIFICATION_TTL_SECONDS", "600")),
+        ge=60, le=86400,
+    )
     clarification_enabled: bool = Field(
-        default_factory=lambda: os.getenv("CLARIFICATION_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+        default_factory=lambda: os.getenv("CLARIFICATION_ENABLED", "true").strip().lower()
+        in {"1", "true", "yes", "on"}
     )
-    clarification_max_questions: int = Field(
-        default_factory=lambda: int(os.getenv("CLARIFICATION_MAX_QUESTIONS", "2")),
-        ge=1,
-        le=3,
+    clarification_min_prompt_chars: int = Field(
+        default_factory=lambda: int(os.getenv("CLARIFICATION_MIN_PROMPT_CHARS", "10")),
+        ge=1, le=200,
     )
-    clarification_num_predict: int = Field(
-        default_factory=lambda: int(os.getenv("CLARIFICATION_NUM_PREDICT", "256")),
-        ge=64,
-        le=512,
-    )
-    clarification_history_max_turns: int = Field(
-        default_factory=lambda: int(os.getenv("CLARIFICATION_HISTORY_MAX_TURNS", "3")),
-        ge=0,
-        le=10,
-    )
+
+    # # --- Clarification (پرسش تکمیلی برای سؤال مبهم) ---
+    # clarification_enabled: bool = Field(
+    #     default_factory=lambda: os.getenv("CLARIFICATION_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+    # )
+    # clarification_max_questions: int = Field(
+    #     default_factory=lambda: int(os.getenv("CLARIFICATION_MAX_QUESTIONS", "2")),
+    #     ge=1,
+    #     le=3,
+    # )
+    # clarification_num_predict: int = Field(
+    #     default_factory=lambda: int(os.getenv("CLARIFICATION_NUM_PREDICT", "256")),
+    #     ge=64,
+    #     le=512,
+    # )
+    # clarification_history_max_turns: int = Field(
+    #     default_factory=lambda: int(os.getenv("CLARIFICATION_HISTORY_MAX_TURNS", "3")),
+    #     ge=0,
+    #     le=10,
+    # )
     openai_enabled: bool = Field(
         default_factory=lambda: os.getenv("OPENAI_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
     )

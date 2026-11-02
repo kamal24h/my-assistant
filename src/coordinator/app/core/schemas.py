@@ -19,6 +19,15 @@ class ChatRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class ClarificationRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    question: str
+    missingFields: list[str] = Field(default_factory=list)
+    partialContext: dict[str, Any] = Field(default_factory=dict)
+    clarificationId: UUID
+
+
 class ChatResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -32,6 +41,7 @@ class ChatResponse(BaseModel):
     message: Optional[str] = None
     approvalId: Optional[UUID] = None
     approvalExpiresAt: Optional[str] = None
+    clarification: Optional[ClarificationRequest] = None
 
 
 class ApprovalActionRequest(BaseModel):
