@@ -152,3 +152,6 @@ MCP Server واقعی و ابزارهای نهایی ERP در این ZIP ساخ�
 - توکن کاربر در هدر `Authorization: Bearer ...` بدون تغییر به Coordinator منتقل می‌شود.
 
 پس از تنظیم `.env` اجرا کنید: `docker compose up -d --build assistant-api coordinator fastapi`
+
+
+docker compose up -d rag coordinator assistant
