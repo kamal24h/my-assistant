@@ -4,7 +4,8 @@
 قابلیت‌ها:
   - تشخیص نیت (classify_path) بر اساس keyword + LLM router
   - Clarification قاعده‌محور (گزینه A) برای پرسش‌های مبهم
-  - SSE streaming (فاز ۱) + non-stream سازگار با قبل
+  - SSE streaming (فاز 1) + non-stream سازگار با قبل
+  - Conversation proxy به RAG (C1)
 """
 from __future__ import annotations
 
@@ -245,6 +246,11 @@ def _has_entity_hint(text: str) -> bool:
     return any(h in text.casefold() for h in _ENTITY_HINTS)
 
 
+def _has_reason_hint(text: str) -> bool:
+    lowered = text.casefold()
+    return any(hint in lowered for hint in _REASON_HINTS)
+
+
 def _extract_reason(prompt: str, max_chars: int = 500) -> str:
     """استخراج heuristic دلیل از prompt برای نمایش به approver.
 
@@ -272,9 +278,9 @@ def _extract_reason(prompt: str, max_chars: int = 500) -> str:
     return ""
 
 
-def _has_reason_hint(text: str) -> bool:
-    lowered = text.casefold()
-    return any(hint in lowered for hint in _REASON_HINTS)
+# def _has_reason_hint(text: str) -> bool:
+#     lowered = text.casefold()
+#     return any(hint in lowered for hint in _REASON_HINTS)
 
 
 def _needs_clarification(
@@ -335,19 +341,23 @@ def _needs_clarification(
 
     return (False, [], "")
 
+
 # ---------------------------------------------------------
 # RAG HTTP helpers
 # ---------------------------------------------------------
 
+def _rag_headers() -> dict[str, str]:
+    return {"X-API-Key": settings.rag_api_key} if settings.rag_api_key else {}
+
+
 async def _ensure_conversation(client: httpx.AsyncClient, req: ChatRequest) -> UUID:
     if req.conversationId is not None:
         return req.conversationId
-    headers = {"X-API-Key": settings.rag_api_key} if settings.rag_api_key else {}
     response = await client.post(
         f"{settings.rag_api_base_url.rstrip('/')}/api/v1/conversations",
         json={"appId": req.appId, "tenantId": req.tenantId, "userId": req.userId,
               "title": req.prompt[:120]},
-        headers=headers,
+        headers=_rag_headers(),
     )
     if response.is_error:
         logger.error("RAG conversation creation failed: status=%s", response.status_code)
@@ -370,7 +380,6 @@ async def persist_non_rag_turn(req: ChatRequest, conversation_id: UUID, answer: 
                 "Output guardrail applied before persistence: flags=%s path=%s",
                 ",".join(output_flags), selected_path,
             )
-    headers = {"X-API-Key": settings.rag_api_key} if settings.rag_api_key else {}
     payload = {
         "prompt": req.prompt, "answer": answer, "tenantId": req.tenantId,
         "userId": req.userId, "selectedPath": selected_path,
@@ -380,7 +389,7 @@ async def persist_non_rag_turn(req: ChatRequest, conversation_id: UUID, answer: 
         async with httpx.AsyncClient(timeout=settings.rag_api_timeout_seconds) as client:
             response = await client.post(
                 f"{settings.rag_api_base_url.rstrip('/')}/api/v1/conversations/{conversation_id}/assistant-turn",
-                json=payload, headers=headers,
+                json=payload, headers=_rag_headers(),
             )
             if response.is_error:
                 logger.error("RAG turn persistence failed: status=%s", response.status_code)
@@ -399,14 +408,13 @@ async def invoke_rag_api(req: ChatRequest) -> tuple[UUID, UUID, str, list[dict[s
     """Use the existing RAG HTTP API; do not access Qdrant or its database directly."""
     base_url = settings.rag_api_base_url.rstrip("/")
     timeout = httpx.Timeout(settings.rag_api_timeout_seconds)
-    headers = {"X-API-Key": settings.rag_api_key} if settings.rag_api_key else {}
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             conversation_id = await _ensure_conversation(client, req)
             response = await client.post(
                 f"{base_url}/api/v1/conversations/{conversation_id}/messages",
                 json={"prompt": req.prompt, "tenantId": req.tenantId, "userId": req.userId},
-                headers=headers,
+                headers=_rag_headers(),
             )
     except RagApiError:
         raise
@@ -842,10 +850,11 @@ def build_graph():
 
 app = FastAPI(
     title="ERP Assistant Coordinator",
-    version="0.9.0",
+    version="0.9.1",
     description=(
         "Phase 9: hybrid ERP assistant with intent classification, rule-based "
-        "clarification, SSE streaming, guardrails, MCP approvals, and optional OpenAI."
+        "clarification, SSE streaming, guardrails, MCP approvals, optional OpenAI, "
+        "and conversation management proxies to RAG."
     ),
 )
 
@@ -953,7 +962,128 @@ async def mcp_health():
 
 
 # ---------------------------------------------------------
-# Clarification common helpers (بین non-stream و stream مشترک)
+# Conversation proxies → RAG (C1)
+# ---------------------------------------------------------
+
+async def _rag_proxy_request(
+    method: str,
+    path: str,
+    *,
+    params: dict[str, Any] | None = None,
+    json_body: dict[str, Any] | None = None,
+) -> Any:
+    """Forward a request to RAG and normalize error handling.
+
+    Raises HTTPException with the RAG status code and structured detail.
+    """
+    base_url = settings.rag_api_base_url.rstrip("/")
+    try:
+        async with httpx.AsyncClient(timeout=settings.rag_api_timeout_seconds) as client:
+            response = await client.request(
+                method, f"{base_url}{path}",
+                params=params, json=json_body,
+                headers=_rag_headers(),
+            )
+    except httpx.TimeoutException as exc:
+        logger.warning("RAG proxy timeout: %s %s", method, path)
+        raise HTTPException(status_code=504, detail={"code": "rag_timeout"}) from exc
+    except httpx.HTTPError as exc:
+        logger.warning("RAG proxy unavailable: %s %s (%s)", method, path, type(exc).__name__)
+        raise HTTPException(status_code=502, detail={"code": "rag_unavailable"}) from exc
+
+    try:
+        body = response.json()
+    except ValueError:
+        body = {"detail": "RAG returned a non-JSON response."}
+    if response.is_error:
+        detail = body.get("detail", body) if isinstance(body, dict) else body
+        raise HTTPException(status_code=response.status_code, detail=detail)
+    return body
+
+
+@app.get("/api/v1/conversations", tags=["Conversations"])
+async def proxy_list_conversations(
+    tenantId: str = Query(..., min_length=1, max_length=100),
+    userId: str = Query(..., min_length=1, max_length=200),
+    appId: str | None = Query(default=None, max_length=100),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    params: dict[str, Any] = {
+        "tenantId": tenantId, "userId": userId,
+        "limit": limit, "offset": offset,
+    }
+    if appId:
+        params["appId"] = appId
+    return await _rag_proxy_request("GET", "/api/v1/conversations", params=params)
+
+
+@app.get("/api/v1/conversations/{conversation_id}", tags=["Conversations"])
+async def proxy_get_conversation(
+    conversation_id: UUID,
+    tenantId: str | None = Query(default=None, max_length=100),
+    userId: str | None = Query(default=None, max_length=200),
+):
+    params: dict[str, Any] = {}
+    if tenantId:
+        params["tenantId"] = tenantId
+    if userId:
+        params["userId"] = userId
+    return await _rag_proxy_request(
+        "GET", f"/api/v1/conversations/{conversation_id}", params=params or None,
+    )
+
+
+@app.get("/api/v1/conversations/{conversation_id}/messages", tags=["Conversations"])
+async def proxy_list_messages(
+    conversation_id: UUID,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    return await _rag_proxy_request(
+        "GET", f"/api/v1/conversations/{conversation_id}/messages",
+        params={"limit": limit, "offset": offset},
+    )
+
+
+@app.patch("/api/v1/conversations/{conversation_id}", tags=["Conversations"])
+async def proxy_update_conversation(
+    conversation_id: UUID,
+    body: dict[str, Any],
+):
+    return await _rag_proxy_request(
+        "PATCH", f"/api/v1/conversations/{conversation_id}", json_body=body,
+    )
+
+
+@app.patch("/api/v1/conversations/{conversation_id}/feedback", tags=["Conversations"])
+async def proxy_conversation_feedback(
+    conversation_id: UUID,
+    body: dict[str, Any],
+):
+    return await _rag_proxy_request(
+        "PATCH", f"/api/v1/conversations/{conversation_id}/feedback", json_body=body,
+    )
+
+
+@app.patch(
+    "/api/v1/conversations/{conversation_id}/messages/{message_id}/liked",
+    tags=["Conversations"],
+)
+async def proxy_message_liked(
+    conversation_id: UUID,
+    message_id: UUID,
+    body: dict[str, Any],
+):
+    return await _rag_proxy_request(
+        "PATCH",
+        f"/api/v1/conversations/{conversation_id}/messages/{message_id}/liked",
+        json_body=body,
+    )
+
+
+# ---------------------------------------------------------
+# Clarification common helpers
 # ---------------------------------------------------------
 
 async def _evaluate_clarification_before_run(
@@ -1044,16 +1174,10 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
 
     req_effective, selected, clar_payload, resolved_conversation_id = await _evaluate_clarification_before_run(req)
 
-    # if clar_payload and clar_payload.get("is_blocked"):
-    # # persist blocked (در blocked_node هم انجام می‌شد؛ این‌جا یک‌بار)
-    # ...
-    # return ChatResponse(status="blocked", answer=clar_payload["question"], ...)
-
-    # clarification لازم است
     if clar_payload is not None:
         return ChatResponse(
             requestId=req.requestId,
-            conversationId=resolved_conversation_id,   # ← حالا معتبر است
+            conversationId=resolved_conversation_id,
             messageId=None,
             status="needs_clarification",
             answer=clar_payload["question"],
@@ -1260,6 +1384,7 @@ async def _stream_chat(req: ChatRequest, authorization: str | None, request: Req
                         return
                     full_answer += delta
                     yield _sse_event("token", {"delta": delta})
+
         elif selected == "local_rag":
             _, _mid, rag_answer, rag_sources = await invoke_rag_api(req_effective)
             full_answer = rag_answer
@@ -1316,7 +1441,7 @@ async def _stream_chat(req: ChatRequest, authorization: str | None, request: Req
                 "tenantId": req_effective.tenantId,
                 "userId": req_effective.userId,
                 "prompt": req_effective.prompt,
-                "reason": _extract_reason(req_effective.prompt),   # ← جدید
+                "reason": _extract_reason(req_effective.prompt),
                 "toolName": selected_tool["name"],
                 "arguments": selected_tool["arguments"],
                 "status": "pending",
@@ -1486,9 +1611,9 @@ async def approve_erp_operation(
                     status_code=409,
                     detail={"code": "approval_not_pending", "status": record.get("status")},
                 )
-                        
+
             await _check_and_mark_expired(record, request)
-            
+
             if not settings.approval_allow_self_approval and request.approverUserId == record.get("userId"):
                 raise HTTPException(status_code=403, detail={"code": "self_approval_not_allowed"})
 
