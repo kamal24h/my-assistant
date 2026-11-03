@@ -7,9 +7,9 @@ A containerized, hybrid **ERP Smart Assistant** with four application layers on 
 
 | Service | Role |
 |---|---|
-| `assistant-api` (port 8003) | Public gateway; forwards to coordinator, forwards SSO `Authorization` |
-| `coordinator` (8001) | LangGraph router + guardrails + approvals + MCP + optional OpenAI |
-| `fastapi` / rag_service (8000) | Documents, conversations, messages, RAG pipeline, persistence |
+| `assistant-api` (port 8100) | Public gateway; forwards to coordinator, forwards SSO `Authorization` |
+| `coordinator` (8101) | LangGraph router + guardrails + approvals + MCP + optional OpenAI |
+| `fastapi` / rag_service (8102) | Documents, conversations, messages, RAG pipeline, persistence |
 | `ollama`, `qdrant`, `postgres`, `redis` | Infrastructure |
 
 The coordinator graph is: `input_guardrail → (blocked | route) → {local_llm, local_rag, local_mcp, erp_write, openai} → END`, with human approval for write operations backed by Redis.
@@ -32,7 +32,7 @@ The coordinator graph is: `input_guardrail → (blocked | route) → {local_llm,
    - `postgres` port `5432:5432` exposed publicly (should be internal-only).
    - `qdrant` 6333/6334 exposed publicly.
    - `redis` 6379 exposed publicly.
-   - `fastapi` binds `127.0.0.1:8000` (good) but `coordinator` and `assistant-api` too (good). Infra should match.
+   - `rag` binds `127.0.0.1:8102` (good) but `coordinator` and `assistant` too (good). Infra should match.
    - `ollama` `gpus: all` + `NVIDIA_VISIBLE_DEVICES` is fine but requires nvidia runtime.
 
 7. **`assistant_turns.py` has no `conversation_id`/`userId` consistency check against the record** in the approval history path — it builds a fresh `ChatRequest` with `requestId`/`conversationId` from the stored record, which is fine, but `persist_non_rag_turn` doesn't validate that `req.conversationId` belongs to `req.tenantId`/`req.userId` (the RAG side does via `get_conversation`).
@@ -63,7 +63,7 @@ The coordinator graph is: `input_guardrail → (blocked | route) → {local_llm,
 
 20. **`messages.py`** does not call `guard_output` on the RAG answer until after generation (it does). Good. But `assistant_turns` persistence path also applies `guard_output` in coordinator before persist — double-guarding is fine.
 
-21. **`workflow.py` `/api/v1/assistant/chat`** — the gateway already validates `X-API-Key`; coordinator's `chat` does **not** re-validate `ASSISTANT_API_KEY`. That's by design (internal), but the coordinator port is exposed on `127.0.0.1:8001` — fine for same-host.
+21. **`workflow.py` `/api/v1/assistant/chat`** — the gateway already validates `X-API-Key`; coordinator's `chat` does **not** re-validate `ASSISTANT_API_KEY`. That's by design (internal), but the coordinator port is exposed on `127.0.0.1:8100` — fine for same-host.
 
 22. **`erp_write_node`** builds `ChatRequest(requestId=..., conversationId=..., appId=..., tenantId=..., userId=..., prompt=...)` without `messageId`/`metadata` — `extra="forbid"` so it's fine, but omitting `messageId` means the persisted turn gets a new message id. OK.
 

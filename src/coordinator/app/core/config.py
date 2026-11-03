@@ -22,7 +22,7 @@ class CoordinatorSettings(BaseModel):
         le=8192,
     )
     rag_api_base_url: str = Field(
-        default_factory=lambda: os.getenv("RAG_API_BASE_URL", "http://fastapi:8000")
+        default_factory=lambda: os.getenv("RAG_API_BASE_URL", "http://rag:8102")
     )
     rag_api_key: str = Field(
         default_factory=lambda: os.getenv("RAG_API_KEY", "")
@@ -109,7 +109,7 @@ class CoordinatorSettings(BaseModel):
     )
 
     erp_mcp_url: str = Field(
-        default_factory=lambda: os.getenv("ERP_MCP_URL", "http://erp-mcp:8002/mcp")
+        default_factory=lambda: os.getenv("ERP_MCP_URL", "http://216.65.200.52:30001/mcp")
     )
     erp_mcp_timeout_seconds: float = Field(
         default_factory=lambda: float(os.getenv("ERP_MCP_TIMEOUT_SECONDS", "30")),

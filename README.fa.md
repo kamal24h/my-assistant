@@ -33,10 +33,10 @@ docker compose logs -f coordinator
 5. سلامت سرویس‌ها را بررسی کن:
 
 ```bash
-curl http://localhost:8001/health
-curl http://localhost:8001/health/llm
-curl http://localhost:8001/health/rag
-curl http://localhost:8001/health/mcp
+curl http://localhost:8100/health
+curl http://localhost:8100/health/llm
+curl http://localhost:8100/health/rag
+curl http://localhost:8100/health/mcp
 ```
 
 `/health/mcp` تا وقتی MCP Server واقعی با پروتکل سازگار در دسترس نباشد، عمداً healthy نمی‌شود.
@@ -44,7 +44,7 @@ curl http://localhost:8001/health/mcp
 ## تست درخواست
 
 ```bash
-curl -X POST http://localhost:8001/api/v1/assistant/chat \
+curl -X POST http://localhost:8100/api/v1/assistant/chat \
   -H 'Content-Type: application/json' \
   -d '{"appId":"ERP","tenantId":"tenant-1","userId":"user-1","prompt":"طبق مستندات داخلی، روند ثبت درخواست خرید چیست؟"}'
 ```
@@ -86,7 +86,7 @@ curl -X POST http://localhost:8001/api/v1/assistant/chat \
 برای بررسی وضعیت OpenAI:
 
 ```bash
-curl http://localhost:8001/health/openai
+curl http://localhost:8100/health/openai
 ```
 
 ## فاز ششم — ERP MCP و تأیید عملیات تغییردهنده
@@ -144,8 +144,8 @@ MCP Server واقعی و ابزارهای نهایی ERP در این ZIP ساخ�
 
 سرویس جدید `src/assistant_api` یک درگاه مستقل برای دستیار است. این سرویس درخواست `POST /api/v1/assistant/chat` را به Coordinator مبتنی بر LangGraph ارسال می‌کند؛ منطق Coordinator و Local RAG و APIهای مدیریت اسناد تغییری نکرده‌اند.
 
-- آدرس روی میزبان: `http://localhost:8003` (به‌صورت پیش‌فرض فقط روی loopback منتشر می‌شود)
-- مستندات Swagger: `http://localhost:8003/docs`
+- آدرس روی میزبان: `http://localhost:8100` (به‌صورت پیش‌فرض فقط روی loopback منتشر می‌شود)
+- مستندات Swagger: `http://localhost:8100/docs`
 - سلامت سرویس: `GET /health`
 - چت: `POST /api/v1/assistant/chat`
 - در صورت تنظیم `ASSISTANT_API_KEY` در `.env`، هدر `X-API-Key` الزامی است.

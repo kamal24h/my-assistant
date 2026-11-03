@@ -13,8 +13,8 @@ Start with `.env.example`, then run `docker compose up -d --build`. See the Pers
 
 The monorepo now includes a separate public FastAPI gateway at `src/assistant_api`. It forwards `POST /api/v1/assistant/chat` to the existing LangGraph Coordinator and leaves the full Local RAG service and its document APIs in `src/rag_service` unchanged.
 
-- Host endpoint: `http://localhost:8003` (bound to loopback by default)
-- Swagger: `http://localhost:8003/docs`
+- Host endpoint: `http://localhost:8100` (bound to loopback by default)
+- Swagger: `http://localhost:8100/docs`
 - Health: `GET /health`
 - Chat: `POST /api/v1/assistant/chat`
 - Optional gateway authentication: `X-API-Key: <ASSISTANT_API_KEY>` when `ASSISTANT_API_KEY` is set in `.env`

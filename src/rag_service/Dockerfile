@@ -70,15 +70,15 @@ RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
 USER appuser
 
-EXPOSE 8000
+EXPOSE 8102
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:8102/health || exit 1
 
 CMD ["gunicorn", "main:app", \
      "--worker-class", "uvicorn.workers.UvicornWorker", \
      "--workers", "2", \
-     "--bind", "0.0.0.0:8000", \
+     "--bind", "0.0.0.0:8102", \
      "--timeout", "300", \
      "--graceful-timeout", "30", \
      "--access-logfile", "-", \

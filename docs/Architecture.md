@@ -6,7 +6,7 @@
                                             │ HTTPS
                                             ▼
                          ┌─────────────────────────────────────┐
-                         │        Assistant API (8003)         │
+                         │        Assistant API (8100)         │
                          │  ─ Session / Conversation Mgmt      │
                          │  ─ Data Transformation (future)     │
                          │  ─ Document Management (forward)    │
@@ -16,7 +16,7 @@
                             │                             │
                             ▼                             │
              ┌──────────────────────────────┐             │
-             │    Coordinator (8001)        │             │
+             │    Coordinator (8101)        │             │
              │  ─ Orchestration             │             │
              │  ─ Routing / Tool Selection  │             │
              │  ─ Clarification / Approval  │             │
@@ -25,7 +25,7 @@
                 │        │        │       │               │
                 ▼        ▼        ▼       ▼               ▼
               ┌────┐  ┌────┐  ┌────┐    ┌────┐      ┌─────────────┐
-              │RAG │  │LLM │  │MCP │    │Open│      │  RAG (8000) │
+              │RAG │  │LLM │  │MCP │    │Open│      │  RAG (8102) │
               └────┘  └────┘  └────┘    │AI  │      │  documents  │
                 │                       └────┘      └─────────────┘
                 └───────── (فقط داخلی، بدون host port) ───┘

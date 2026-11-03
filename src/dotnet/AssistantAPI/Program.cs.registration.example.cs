@@ -10,7 +10,7 @@ builder.Services.AddHttpClient<YourApp.Assistant.AssistantCoordinatorClient>(cli
 });
 
 // Example appsettings.Development.json entry:
-// "AssistantCoordinator": { "BaseUrl": "http://localhost:8001" }
+// "AssistantCoordinator": { "BaseUrl": "http://localhost:8101" }
 //
 // If .NET runs in the same Docker network, use:
-// "AssistantCoordinator": { "BaseUrl": "http://coordinator:8001" }
+// "AssistantCoordinator": { "BaseUrl": "http://coordinator:8101" }

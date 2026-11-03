@@ -29,8 +29,8 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-COORDINATOR_URL = os.getenv("COORDINATOR_URL", "http://coordinator:8001").rstrip("/")
-RAG_API_URL = os.getenv("RAG_API_URL", "http://fastapi:8000").rstrip("/")
+COORDINATOR_URL = os.getenv("COORDINATOR_URL", "http://coordinator:8101").rstrip("/")
+RAG_API_URL = os.getenv("RAG_API_URL", "http://rag:8102").rstrip("/")
 ASSISTANT_API_KEY = os.getenv("ASSISTANT_API_KEY", "").strip()
 APPROVAL_API_KEY = os.getenv("APPROVAL_API_KEY", "").strip()
 REQUEST_TIMEOUT = float(os.getenv("ASSISTANT_API_TIMEOUT_SECONDS", "90"))

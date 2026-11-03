@@ -32,14 +32,14 @@ services:
     networks:
     - assistant_network
 
-  fastapi:
+  rag:
     build:
       context: ./src/rag_service
       dockerfile: Dockerfile
-    container_name: fastapi_backend
+    container_name: assistant-rag
     restart: always
     expose:
-    - "8000"
+    - "8102"
     volumes:
     - ./docs:/app/docs
     environment:
@@ -111,24 +111,24 @@ services:
     networks:
     - assistant_network
 
-  assistant-api:
+  assistant:
     build:
       context: ./src/assistant_api
       dockerfile: Dockerfile
-    container_name: erp-assistant-api
+    container_name: assistant-api
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8003:8003"
+      - "127.0.0.1:8100:8100"
     environment:
       PYTHONUNBUFFERED: '1'
-      COORDINATOR_URL: http://coordinator:8001
-      RAG_API_URL: http://fastapi:8000
+      COORDINATOR_URL: http://coordinator:8101
+      RAG_API_URL: http://rag:8102
       ASSISTANT_API_KEY: ${ASSISTANT_API_KEY:-}
       APPROVAL_API_KEY: ${APPROVAL_API_KEY:-}
       ASSISTANT_API_TIMEOUT_SECONDS: ${ASSISTANT_API_TIMEOUT_SECONDS:-90}
     depends_on:
       - coordinator
-      - fastapi
+      - rag
     networks:
       - assistant_network
 
@@ -136,17 +136,17 @@ services:
     build:
       context: ./src/coordinator
       dockerfile: Dockerfile
-    container_name: erp-assistant-coordinator
+    container_name: assistant-coordinator
     restart: unless-stopped
     expose:
-    - "8001"
+    - "8101"
     environment:
       PYTHONUNBUFFERED: '1'
       OLLAMA_BASE_URL: http://ollama:11434
       LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-qwen3.5:9b}
       LOCAL_LLM_TEMPERATURE: ${LOCAL_LLM_TEMPERATURE:-0.2}
       LOCAL_LLM_NUM_PREDICT: ${LOCAL_LLM_NUM_PREDICT:-512}
-      RAG_API_BASE_URL: http://fastapi:8000
+      RAG_API_BASE_URL: http://rag:8102
       RAG_API_TIMEOUT_SECONDS: ${RAG_API_TIMEOUT_SECONDS:-60}
       # RAG_API_KEY removed — RAG has no auth in this architecture.
       ROUTER_NUM_PREDICT: ${ROUTER_NUM_PREDICT:-32}
@@ -160,7 +160,7 @@ services:
       OPENAI_MAX_INPUT_CHARS: ${OPENAI_MAX_INPUT_CHARS:-4000}
       OPENAI_MAX_CONCURRENCY: ${OPENAI_MAX_CONCURRENCY:-4}
       OPENAI_MAX_REQUESTS_PER_MINUTE: ${OPENAI_MAX_REQUESTS_PER_MINUTE:-30}
-      ERP_MCP_URL: ${ERP_MCP_URL:-http://erp-mcp:8002/mcp}
+      ERP_MCP_URL: ${ERP_MCP_URL:-http://216.65.200.52:30001/mcp}
       ERP_MCP_TIMEOUT_SECONDS: ${ERP_MCP_TIMEOUT_SECONDS:-30}
       ERP_MCP_BEARER_TOKEN: ${ERP_MCP_BEARER_TOKEN:-}
       ERP_MCP_READ_ONLY_TOOLS: ${ERP_MCP_READ_ONLY_TOOLS:-}
@@ -179,7 +179,7 @@ services:
       CLARIFICATION_NUM_PREDICT: ${CLARIFICATION_NUM_PREDICT:-256}
       CLARIFICATION_HISTORY_MAX_TURNS: ${CLARIFICATION_HISTORY_MAX_TURNS:-3}
     depends_on:
-    - fastapi
+    - rag
     - ollama
     - redis
     networks:

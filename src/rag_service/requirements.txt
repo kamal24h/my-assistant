@@ -24,6 +24,7 @@ pika
 
 sqlalchemy
 psycopg[binary]
+# psycopg2-binary
 
 # for Reranking
 langchain_classic
