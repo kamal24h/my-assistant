@@ -1,5 +1,4 @@
 # src/assistant_api/app/main.py
-
 """Public Python/FastAPI gateway for ERP Smart Assistant.
 
 Architecture (final):
@@ -22,8 +21,11 @@ import os
 from contextlib import asynccontextmanager
 from typing import Any
 from uuid import UUID
+
 import httpx
-from fastapi import FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
+from fastapi import (
+    FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile,
+)
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -87,7 +89,7 @@ app = FastAPI(
         "Chat, streaming, conversations, and approvals are forwarded to the Coordinator. "
         "Document management is forwarded directly to the RAG service."
     ),
-    version="1.1.0",
+    version="1.2.0",
     lifespan=lifespan,
 )
 
@@ -120,7 +122,7 @@ def _coordinator_headers(
 
 
 # ---------------------------------------------------------
-# Forward helper
+# Forward helpers
 # ---------------------------------------------------------
 
 async def _coordinator_forward(
@@ -160,6 +162,36 @@ async def _coordinator_forward(
     return body
 
 
+async def _rag_forward(
+    request: Request,
+    method: str,
+    path: str,
+    *,
+    params: dict[str, Any] | None = None,
+    json_body: dict[str, Any] | None = None,
+    files: Any = None,
+    data: dict[str, Any] | None = None,
+) -> Any:
+    url = f"{RAG_API_URL}{path}"
+    try:
+        response = await request.app.state.http.request(
+            method, url, params=params, json=json_body, files=files, data=data,
+        )
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail={"code": "rag_timeout"}) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail={"code": "rag_unavailable"}) from exc
+
+    try:
+        body = response.json()
+    except ValueError:
+        body = {"detail": "RAG returned a non-JSON response."}
+    if response.is_error:
+        detail = body.get("detail", body) if isinstance(body, dict) else body
+        raise HTTPException(status_code=response.status_code, detail=detail)
+    return body
+
+
 # ---------------------------------------------------------
 # Health
 # ---------------------------------------------------------
@@ -175,7 +207,7 @@ async def health():
 
 
 # ---------------------------------------------------------
-# Chat (non-stream) — passthrough to Coordinator
+# Chat (non-stream)
 # ---------------------------------------------------------
 
 @app.post("/api/v1/assistant/chat")
@@ -197,9 +229,59 @@ async def chat(
 
 
 # ---------------------------------------------------------
-# SSE Streaming — forward to Coordinator (C5 - placeholder)
+# Chat (SSE streaming)
 # ---------------------------------------------------------
-# (implemented in C5; not included in C3)
+
+async def _stream_coordinator(
+    request: Request,
+    payload_json: dict[str, Any],
+    forward_auth: str | None,
+):
+    headers = _coordinator_headers(forward_auth=forward_auth)
+    url = f"{COORDINATOR_URL}/api/v1/assistant/chat/stream"
+
+    try:
+        async with request.app.state.http.stream(
+            "POST", url, json=payload_json, headers=headers,
+        ) as response:
+            if response.status_code >= 400:
+                raw = await response.aread()
+                try:
+                    detail = json.loads(raw).get("detail", {"code": "coordinator_error"})
+                except Exception:
+                    detail = {"code": "coordinator_error", "message": "Non-JSON error response."}
+                data = json.dumps(detail, ensure_ascii=False)
+                yield f"event: error\ndata: {data}\n\n".encode("utf-8")
+                return
+            async for chunk in response.aiter_bytes():
+                yield chunk
+    except httpx.TimeoutException:
+        yield b'event: error\ndata: {"code": "coordinator_timeout"}\n\n'
+    except httpx.HTTPError:
+        yield b'event: error\ndata: {"code": "coordinator_unavailable"}\n\n'
+
+
+@app.post("/api/v1/assistant/chat/stream")
+async def chat_stream(
+    payload: ChatRequest,
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    authorization: str | None = Header(default=None),
+):
+    _check_api_key(x_api_key)
+    if authorization and not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail={"code": "invalid_authorization_scheme"})
+
+    payload_json = payload.model_dump(exclude_none=True, by_alias=True)
+
+    return StreamingResponse(
+        _stream_coordinator(request, payload_json, authorization),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # ---------------------------------------------------------
@@ -308,68 +390,6 @@ async def message_liked(
 
 
 # ---------------------------------------------------------
-# SSE streaming — forward to Coordinator
-# ---------------------------------------------------------
-
-async def _stream_coordinator(
-    request: Request,
-    payload_json: dict[str, Any],
-    forward_auth: str | None,
-):
-    """Async generator that yields raw SSE bytes from Coordinator.
-
-    On Coordinator-side errors (non-200), emits an SSE `error` event so
-    that EventSource parsers see a uniform protocol. On network failures,
-    emits an SSE `error` event as well.
-    """
-    headers = _coordinator_headers(forward_auth=forward_auth)
-    url = f"{COORDINATOR_URL}/api/v1/assistant/chat/stream"
-
-    try:
-        async with request.app.state.http.stream(
-            "POST", url, json=payload_json, headers=headers,
-        ) as response:
-            if response.status_code >= 400:
-                raw = await response.aread()
-                try:
-                    detail = json.loads(raw).get("detail", {"code": "coordinator_error"})
-                except Exception:
-                    detail = {"code": "coordinator_error", "message": "Non-JSON error response."}
-                data = json.dumps(detail, ensure_ascii=False)
-                yield f"event: error\ndata: {data}\n\n".encode("utf-8")
-                return
-            async for chunk in response.aiter_bytes():
-                yield chunk
-    except httpx.TimeoutException:
-        yield b'event: error\ndata: {"code": "coordinator_timeout"}\n\n'
-    except httpx.HTTPError:
-        yield b'event: error\ndata: {"code": "coordinator_unavailable"}\n\n'
-
-
-@app.post("/api/v1/assistant/chat/stream")
-async def chat_stream(
-    payload: ChatRequest,
-    request: Request,
-    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
-    authorization: str | None = Header(default=None),
-):
-    _check_api_key(x_api_key)
-    if authorization and not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail={"code": "invalid_authorization_scheme"})
-
-    payload_json = payload.model_dump(exclude_none=True, by_alias=True)
-
-    return StreamingResponse(
-        _stream_coordinator(request, payload_json, authorization),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
-
-
-# ---------------------------------------------------------
 # Approval proxies (to Coordinator)
 # ---------------------------------------------------------
 
@@ -424,45 +444,6 @@ async def reject_erp_operation(
         forward_auth=authorization,
         include_approval_key=True,
     )
-
-
-# ---------------------------------------------------------
-# RAG forward helper (for document management only)
-# ---------------------------------------------------------
-
-async def _rag_forward(
-    request: Request,
-    method: str,
-    path: str,
-    *,
-    params: dict[str, Any] | None = None,
-    json_body: dict[str, Any] | None = None,
-    files: Any = None,
-    data: dict[str, Any] | None = None,
-) -> Any:
-    """Forward a request to RAG and normalize errors.
-
-    Used ONLY for document management. Chat / conversations / approvals
-    always go through the Coordinator.
-    """
-    url = f"{RAG_API_URL}{path}"
-    try:
-        response = await request.app.state.http.request(
-            method, url, params=params, json=json_body, files=files, data=data,
-        )
-    except httpx.TimeoutException as exc:
-        raise HTTPException(status_code=504, detail={"code": "rag_timeout"}) from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail={"code": "rag_unavailable"}) from exc
-
-    try:
-        body = response.json()
-    except ValueError:
-        body = {"detail": "RAG returned a non-JSON response."}
-    if response.is_error:
-        detail = body.get("detail", body) if isinstance(body, dict) else body
-        raise HTTPException(status_code=response.status_code, detail=detail)
-    return body
 
 
 # ---------------------------------------------------------
