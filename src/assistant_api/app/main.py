@@ -363,3 +363,187 @@ async def reject_erp_operation(
         forward_auth=authorization,
         include_approval_key=True,
     )
+
+
+# ---------------------------------------------------------
+# RAG forward helper (for document management only)
+# ---------------------------------------------------------
+
+async def _rag_forward(
+    request: Request,
+    method: str,
+    path: str,
+    *,
+    params: dict[str, Any] | None = None,
+    json_body: dict[str, Any] | None = None,
+    files: Any = None,
+    data: dict[str, Any] | None = None,
+) -> Any:
+    """Forward a request to RAG and normalize errors.
+
+    Used ONLY for document management. Chat / conversations / approvals
+    always go through the Coordinator.
+    """
+    url = f"{RAG_API_URL}{path}"
+    try:
+        response = await request.app.state.http.request(
+            method, url, params=params, json=json_body, files=files, data=data,
+        )
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail={"code": "rag_timeout"}) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail={"code": "rag_unavailable"}) from exc
+
+    try:
+        body = response.json()
+    except ValueError:
+        body = {"detail": "RAG returned a non-JSON response."}
+    if response.is_error:
+        detail = body.get("detail", body) if isinstance(body, dict) else body
+        raise HTTPException(status_code=response.status_code, detail=detail)
+    return body
+
+
+# ---------------------------------------------------------
+# Document management proxies (to RAG, direct)
+# ---------------------------------------------------------
+
+@app.get("/api/v1/documents")
+async def list_documents(
+    request: Request,
+    app_id: str | None = Query(default=None, alias="appId", max_length=100),
+    department: str | None = Query(default=None, max_length=100),
+    include_all_versions: bool = Query(default=False, alias="includeAllVersions"),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _check_api_key(x_api_key)
+    params: dict[str, Any] = {"includeAllVersions": include_all_versions}
+    if app_id:
+        params["appId"] = app_id
+    if department:
+        params["department"] = department
+    return await _rag_forward(request, "GET", "/api/v1/documents", params=params)
+
+
+@app.get("/api/v1/documents/app-ids")
+async def list_document_app_ids(
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _check_api_key(x_api_key)
+    return await _rag_forward(request, "GET", "/api/v1/documents/app-ids")
+
+
+@app.get("/api/v1/documents/by-logical/{logical_doc_id}/versions")
+async def list_document_versions(
+    logical_doc_id: UUID,
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _check_api_key(x_api_key)
+    return await _rag_forward(
+        request, "GET",
+        f"/api/v1/documents/by-logical/{logical_doc_id}/versions",
+    )
+
+
+@app.post("/api/v1/documents/create")
+async def create_document_file(
+    request: Request,
+    file: UploadFile = File(...),
+    doc_name: str = Form(..., alias="docName"),
+    doc_type: str = Form(..., alias="docType"),
+    department: str = Form(...),
+    app_id: str = Form(..., alias="appId"),
+    metadata: str | None = Form(default=None),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _check_api_key(x_api_key)
+
+    # Stream the upload to RAG without buffering the whole file in memory.
+    async def file_stream():
+        while True:
+            chunk = await file.read(64 * 1024)
+            if not chunk:
+                break
+            yield chunk
+
+    files = {"file": (file.filename, file_stream(), file.content_type)}
+    form_data: dict[str, Any] = {
+        "docName": doc_name,
+        "docType": doc_type,
+        "department": department,
+        "appId": app_id,
+    }
+    if metadata is not None:
+        form_data["metadata"] = metadata
+
+    return await _rag_forward(
+        request, "POST", "/api/v1/documents/create",
+        files=files, data=form_data,
+    )
+
+
+@app.post("/api/v1/documents/create-text")
+async def create_text_documents_replace(
+    body: dict[str, Any],
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _check_api_key(x_api_key)
+    return await _rag_forward(
+        request, "POST", "/api/v1/documents/create-text",
+        json_body=body,
+    )
+
+
+@app.post("/api/v1/documents/create-text2")
+async def create_text_documents_upsert(
+    body: dict[str, Any],
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _check_api_key(x_api_key)
+    return await _rag_forward(
+        request, "POST", "/api/v1/documents/create-text2",
+        json_body=body,
+    )
+
+
+@app.delete("/api/v1/documents/by-logical/{logical_doc_id}")
+async def delete_documents_by_logical_id(
+    logical_doc_id: UUID,
+    request: Request,
+    all_versions: bool = Query(default=False, alias="allVersions"),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _check_api_key(x_api_key)
+    return await _rag_forward(
+        request, "DELETE",
+        f"/api/v1/documents/by-logical/{logical_doc_id}",
+        params={"allVersions": all_versions},
+    )
+
+
+@app.delete("/api/v1/documents/by-app/{app_id}")
+async def delete_documents_by_app(
+    app_id: str,
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _check_api_key(x_api_key)
+    return await _rag_forward(
+        request, "DELETE", f"/api/v1/documents/by-app/{app_id}",
+    )
+
+
+@app.delete("/api/v1/documents/{document_id}")
+async def delete_document(
+    document_id: UUID,
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _check_api_key(x_api_key)
+    return await _rag_forward(
+        request, "DELETE", f"/api/v1/documents/{document_id}",
+    )
