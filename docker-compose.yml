@@ -16,6 +16,7 @@ services:
     gpus: all
     networks:
     - assistant_network
+
   qdrant:
     image: qdrant/qdrant:v1.15.0
     container_name: assistant-qdrant
@@ -30,14 +31,123 @@ services:
     - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
     networks:
     - assistant_network
-  fastapi:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: assistant-postgres
+    restart: unless-stopped
+    volumes:
+    - postgres_data:/var/lib/postgresql/data
+    ports:
+    - 127.0.0.1:5432:5432
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-assistant_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-assistant_db}
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U ${POSTGRES_USER:-assistant_user} -d ${POSTGRES_DB:-assistant_db}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+    - assistant_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: assistant-redis
+    restart: unless-stopped
+    volumes:
+    - redis_data:/data
+    ports:
+    - 127.0.0.1:6379:6379
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks:
+    - assistant_network
+  
+  assistant:
+    build:
+      context: ./src/assistant_api
+      dockerfile: Dockerfile
+    container_name: assistant-api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8100:8100"
+    environment:
+      PYTHONUNBUFFERED: '1'
+      COORDINATOR_URL: http://coordinator:8101
+      RAG_API_URL: http://rag:8102
+      ASSISTANT_API_KEY: ${ASSISTANT_API_KEY:-}
+      APPROVAL_API_KEY: ${APPROVAL_API_KEY:-}
+      ASSISTANT_API_TIMEOUT_SECONDS: ${ASSISTANT_API_TIMEOUT_SECONDS:-90}
+    depends_on:
+      - coordinator
+      - rag
+    networks:
+      - assistant_network
+
+  coordinator:
+    build:
+      context: ./src/coordinator
+      dockerfile: Dockerfile
+    container_name: assistant-coordinator
+    restart: unless-stopped
+    expose:
+    - "8101"
+    environment:
+      PYTHONUNBUFFERED: '1'
+      OLLAMA_BASE_URL: http://ollama:11434
+      LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-qwen3.5:9b}
+      LOCAL_LLM_TEMPERATURE: ${LOCAL_LLM_TEMPERATURE:-0.2}
+      LOCAL_LLM_NUM_PREDICT: ${LOCAL_LLM_NUM_PREDICT:-512}
+      RAG_API_BASE_URL: http://rag:8102
+      RAG_API_TIMEOUT_SECONDS: ${RAG_API_TIMEOUT_SECONDS:-60}
+      # RAG_API_KEY removed — RAG has no auth in this architecture.
+      ROUTER_NUM_PREDICT: ${ROUTER_NUM_PREDICT:-32}
+      OPENAI_ENABLED: ${OPENAI_ENABLED:-false}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      OPENAI_TIMEOUT_SECONDS: ${OPENAI_TIMEOUT_SECONDS:-25}
+      OPENAI_MAX_RETRIES: ${OPENAI_MAX_RETRIES:-1}
+      OPENAI_MAX_TOKENS: ${OPENAI_MAX_TOKENS:-800}
+      OPENAI_TEMPERATURE: ${OPENAI_TEMPERATURE:-0.2}
+      OPENAI_MAX_INPUT_CHARS: ${OPENAI_MAX_INPUT_CHARS:-4000}
+      OPENAI_MAX_CONCURRENCY: ${OPENAI_MAX_CONCURRENCY:-4}
+      OPENAI_MAX_REQUESTS_PER_MINUTE: ${OPENAI_MAX_REQUESTS_PER_MINUTE:-30}
+      ERP_MCP_URL: ${ERP_MCP_URL:-http://216.65.200.52:30001/mcp}
+      ERP_MCP_TIMEOUT_SECONDS: ${ERP_MCP_TIMEOUT_SECONDS:-30}
+      ERP_MCP_BEARER_TOKEN: ${ERP_MCP_BEARER_TOKEN:-}
+      ERP_MCP_READ_ONLY_TOOLS: ${ERP_MCP_READ_ONLY_TOOLS:-}
+      ERP_MCP_WRITE_TOOLS: ${ERP_MCP_WRITE_TOOLS:-}
+      ERP_MCP_REQUIRE_USER_TOKEN: ${ERP_MCP_REQUIRE_USER_TOKEN:-true}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      APPROVAL_API_KEY: ${APPROVAL_API_KEY:-${ASSISTANT_API_KEY:-}}
+      APPROVAL_TTL_SECONDS: ${APPROVAL_TTL_SECONDS:-900}
+      APPROVAL_ALLOW_SELF_APPROVAL: ${APPROVAL_ALLOW_SELF_APPROVAL:-false}
+      GUARDRAILS_ENABLED: ${GUARDRAILS_ENABLED:-true}
+      GUARDRAILS_MAX_PROMPT_CHARS: ${GUARDRAILS_MAX_PROMPT_CHARS:-12000}
+      GUARDRAILS_MAX_OUTPUT_CHARS: ${GUARDRAILS_MAX_OUTPUT_CHARS:-16000}
+      GUARDRAILS_MAX_TOOL_RESULT_CHARS: ${GUARDRAILS_MAX_TOOL_RESULT_CHARS:-12000}
+      CLARIFICATION_ENABLED: ${CLARIFICATION_ENABLED:-true}
+      CLARIFICATION_MAX_QUESTIONS: ${CLARIFICATION_MAX_QUESTIONS:-2}
+      CLARIFICATION_NUM_PREDICT: ${CLARIFICATION_NUM_PREDICT:-256}
+      CLARIFICATION_HISTORY_MAX_TURNS: ${CLARIFICATION_HISTORY_MAX_TURNS:-3}
+    depends_on:
+    - rag
+    - ollama
+    - redis
+    networks:
+    - assistant_network
+
+  rag:
     build:
       context: ./src/rag_service
       dockerfile: Dockerfile
-    container_name: fastapi_backend
+    container_name: assistant-rag
     restart: always
-    ports:
-    - 127.0.0.1:8000:8000
+    expose:
+    - "8102"
     volumes:
     - ./docs:/app/docs
     environment:
@@ -66,7 +176,7 @@ services:
     - RABBITMQ_QUEUE=${RABBITMQ_QUEUE:-LogAi}
     - RABBITMQ_ROUTING_KEY=${RABBITMQ_ROUTING_KEY:-message.created}
     - RABBITMQ_ENABLED=${RABBITMQ_ENABLED:-true}
-    - API_KEY=${API_KEY:-${API_Key:-}}
+    # NOTE: RAG_API_KEY removed — RAG is fully internal and has no auth.
     depends_on:
     - qdrant
     - ollama
@@ -74,112 +184,13 @@ services:
     - redis
     networks:
     - assistant_network
-  postgres:
-    image: postgres:16-alpine
-    container_name: assistant-postgres
-    restart: unless-stopped
-    volumes:
-    - postgres_data:/var/lib/postgresql/data
-    ports:
-    - 127.0.0.1:5432:5432
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-assistant_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-assistant_db}
-    healthcheck:
-      test:
-      - CMD-SHELL
-      - pg_isready -U ${POSTGRES_USER:-assistant_user} -d ${POSTGRES_DB:-assistant_db}
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-    - assistant_network
-  redis:
-    image: redis:7-alpine
-    container_name: assistant-redis
-    restart: unless-stopped
-    volumes:
-    - redis_data:/data
-    ports:
-    - 127.0.0.1:6379:6379
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    networks:
-    - assistant_network
-  assistant-api:
-    build:
-      context: ./src/assistant_api
-      dockerfile: Dockerfile
-    container_name: erp-assistant-api
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:8003:8003"
-    environment:
-      PYTHONUNBUFFERED: '1'
-      COORDINATOR_URL: http://coordinator:8001
-      ASSISTANT_API_KEY: ${ASSISTANT_API_KEY:-}
-      ASSISTANT_API_TIMEOUT_SECONDS: ${ASSISTANT_API_TIMEOUT_SECONDS:-90}
-    depends_on:
-      - coordinator
-    networks:
-      - assistant_network
-  coordinator:
-    build:
-      context: ./src/coordinator
-      dockerfile: Dockerfile
-    container_name: erp-assistant-coordinator
-    restart: unless-stopped
-    ports:
-    - 127.0.0.1:8001:8001
-    environment:
-      PYTHONUNBUFFERED: '1'
-      OLLAMA_BASE_URL: http://ollama:11434
-      LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-qwen3.5:9b}
-      LOCAL_LLM_TEMPERATURE: ${LOCAL_LLM_TEMPERATURE:-0.2}
-      LOCAL_LLM_NUM_PREDICT: ${LOCAL_LLM_NUM_PREDICT:-512}
-      RAG_API_BASE_URL: http://fastapi:8000
-      RAG_API_TIMEOUT_SECONDS: ${RAG_API_TIMEOUT_SECONDS:-60}
-      RAG_API_KEY: ${RAG_API_KEY:-${API_KEY:-${API_Key:-}}}
-      ROUTER_NUM_PREDICT: ${ROUTER_NUM_PREDICT:-32}
-      OPENAI_ENABLED: ${OPENAI_ENABLED:-false}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
-      OPENAI_TIMEOUT_SECONDS: ${OPENAI_TIMEOUT_SECONDS:-25}
-      OPENAI_MAX_RETRIES: ${OPENAI_MAX_RETRIES:-1}
-      OPENAI_MAX_TOKENS: ${OPENAI_MAX_TOKENS:-800}
-      OPENAI_TEMPERATURE: ${OPENAI_TEMPERATURE:-0.2}
-      OPENAI_MAX_INPUT_CHARS: ${OPENAI_MAX_INPUT_CHARS:-4000}
-      OPENAI_MAX_CONCURRENCY: ${OPENAI_MAX_CONCURRENCY:-4}
-      OPENAI_MAX_REQUESTS_PER_MINUTE: ${OPENAI_MAX_REQUESTS_PER_MINUTE:-30}
-      ERP_MCP_URL: ${ERP_MCP_URL:-http://erp-mcp:8002/mcp}
-      ERP_MCP_TIMEOUT_SECONDS: ${ERP_MCP_TIMEOUT_SECONDS:-30}
-      ERP_MCP_BEARER_TOKEN: ${ERP_MCP_BEARER_TOKEN:-}
-      ERP_MCP_READ_ONLY_TOOLS: ${ERP_MCP_READ_ONLY_TOOLS:-}
-      ERP_MCP_WRITE_TOOLS: ${ERP_MCP_WRITE_TOOLS:-}
-      ERP_MCP_REQUIRE_USER_TOKEN: ${ERP_MCP_REQUIRE_USER_TOKEN:-true}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      APPROVAL_API_KEY: ${APPROVAL_API_KEY:-${RAG_API_KEY:-${API_KEY:-${API_Key:-}}}}
-      APPROVAL_TTL_SECONDS: ${APPROVAL_TTL_SECONDS:-900}
-      APPROVAL_ALLOW_SELF_APPROVAL: ${APPROVAL_ALLOW_SELF_APPROVAL:-false}
-      GUARDRAILS_ENABLED: ${GUARDRAILS_ENABLED:-true}
-      GUARDRAILS_MAX_PROMPT_CHARS: ${GUARDRAILS_MAX_PROMPT_CHARS:-12000}
-      GUARDRAILS_MAX_OUTPUT_CHARS: ${GUARDRAILS_MAX_OUTPUT_CHARS:-16000}
-      GUARDRAILS_MAX_TOOL_RESULT_CHARS: ${GUARDRAILS_MAX_TOOL_RESULT_CHARS:-12000}
-      CLARIFICATION_ENABLED: ${CLARIFICATION_ENABLED:-true}
-      CLARIFICATION_MAX_QUESTIONS: ${CLARIFICATION_MAX_QUESTIONS:-2}
-      CLARIFICATION_NUM_PREDICT: ${CLARIFICATION_NUM_PREDICT:-256}
-      CLARIFICATION_HISTORY_MAX_TURNS: ${CLARIFICATION_HISTORY_MAX_TURNS:-3}
-    depends_on:
-    - fastapi
-    - ollama
-    - redis
-    networks:
-    - assistant_network
+
 volumes:
   ollama_data: null
   qdrant_data: null
   postgres_data: null
   redis_data: null
+
 networks:
   assistant_network:
     external: true
