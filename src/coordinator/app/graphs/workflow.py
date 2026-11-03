@@ -1135,7 +1135,7 @@ def _sse_event(event: str, data: dict[str, Any]) -> dict:
     return {"event": event, "data": json.dumps(data, ensure_ascii=False)}
 
 
-def _chunk_text(text: str, size: int = 40) -> list[str]:
+def _chunk_text(text: str, size: int = 100) -> list[str]:
     """تقسیم متن به تکه‌های کوچک برای شبیه‌سازی streaming در مسیرهای غیر-stream."""
     if not text:
         return [""]

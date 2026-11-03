@@ -15,6 +15,7 @@ from uuid import UUID
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from fastapi.responses import StreamingResponse
 
 COORDINATOR_URL = os.getenv("COORDINATOR_URL", "http://coordinator:8001").rstrip("/")
 ASSISTANT_API_KEY = os.getenv("ASSISTANT_API_KEY", "").strip()
@@ -108,3 +109,115 @@ async def chat(
     if response.is_error:
         raise HTTPException(status_code=response.status_code, detail=body.get("detail", body))
     return body
+
+
+@app.post("/api/v1/assistant/chat/stream")
+async def chat_stream(
+    payload: ChatRequest,
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    authorization: str | None = Header(default=None),
+):
+    _check_api_key(x_api_key)
+    if authorization and not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail={"code": "invalid_authorization_scheme"})
+
+    headers: dict[str, str] = {}
+    if authorization:
+        headers["Authorization"] = authorization
+
+    async def event_generator():
+        try:
+            async with request.app.state.http.stream(
+                "POST",
+                f"{COORDINATOR_URL}/api/v1/assistant/chat/stream",
+                json=payload.model_dump(exclude_none=True, by_alias=True),
+                headers=headers,
+            ) as response:
+                if response.status_code >= 400:
+                    body = await response.aread()
+                    yield f"event: error\ndata: {body.decode('utf-8', errors='replace')}\n\n"
+                    return
+                async for chunk in response.aiter_bytes():
+                    yield chunk
+        except httpx.TimeoutException:
+            yield "event: error\ndata: {\"code\": \"coordinator_timeout\"}\n\n"
+        except httpx.HTTPError:
+            yield "event: error\ndata: {\"code\": \"coordinator_unavailable\"}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.get("/api/v1/erp/approvals/{approval_id}")
+async def get_erp_approval(
+    approval_id: UUID,
+    request: Request,
+    tenant_id: str = Query(alias="tenantId", min_length=1, max_length=100),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _check_api_key(x_api_key)
+    response = await request.app.state.http.get(
+        f"{COORDINATOR_URL}/api/v1/erp/approvals/{approval_id}",
+        params={"tenantId": tenant_id},
+    )
+    body = response.json()
+    if response.is_error:
+        raise HTTPException(status_code=response.status_code, detail=body.get("detail", body))
+    return body
+
+
+@app.post("/api/v1/erp/approvals/{approval_id}/approve")
+async def approve_erp_operation(
+    approval_id: UUID,
+    request: Request,
+    body: dict[str, Any],
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    authorization: str | None = Header(default=None),
+):
+    _check_api_key(x_api_key)
+    if not authorization:
+        raise HTTPException(status_code=401, detail={"code": "approver_bearer_token_required"})
+    headers = {"Authorization": authorization}
+    if x_api_key:
+        headers["X-API-Key"] = x_api_key
+    response = await request.app.state.http.post(
+        f"{COORDINATOR_URL}/api/v1/erp/approvals/{approval_id}/approve",
+        json=body,
+        headers=headers,
+    )
+    body_resp = response.json()
+    if response.is_error:
+        raise HTTPException(status_code=response.status_code, detail=body_resp.get("detail", body_resp))
+    return body_resp
+
+
+@app.post("/api/v1/erp/approvals/{approval_id}/reject")
+async def reject_erp_operation(
+    approval_id: UUID,
+    request: Request,
+    body: dict[str, Any],
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    authorization: str | None = Header(default=None),
+):
+    _check_api_key(x_api_key)
+    if not authorization:
+        raise HTTPException(status_code=401, detail={"code": "approver_bearer_token_required"})
+    headers = {"Authorization": authorization}
+    if x_api_key:
+        headers["X-API-Key"] = x_api_key
+    response = await request.app.state.http.post(
+        f"{COORDINATOR_URL}/api/v1/erp/approvals/{approval_id}/reject",
+        json=body,
+        headers=headers,
+    )
+    body_resp = response.json()
+    if response.is_error:
+        raise HTTPException(status_code=response.status_code, detail=body_resp.get("detail", body_resp))
+    return body_resp

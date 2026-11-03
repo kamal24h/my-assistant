@@ -1,22 +1,31 @@
-app/
-├── main.py
-├── database.py
-├── redis_client.py
-├── ingest_service.py
-│
-├── api/
-│   └── v1/
-│       ├── conversations.py
-│       ├── messages.py
-│       └── documents.py          # نسخه تمیز قبلی
-│
-├── schemas/
-│   ├── conversation.py
-│   ├── message.py
-│   └── document.py
-│
-└── services/
-    ├── conversation_service.py
-    ├── message_service.py
-    ├── assistant_service.py
-    └── document_service.py
+
+                         ┌─────────────────────────────────────┐
+                         │          Client (Web/Mobile)        │
+                         └──────────────────┬──────────────────┘
+                                            │
+                                            │ HTTPS
+                                            ▼
+                         ┌─────────────────────────────────────┐
+                         │        Assistant API (8003)         │
+                         │  ─ Session / Conversation Mgmt      │
+                         │  ─ Data Transformation (future)     │
+                         │  ─ Document Management (forward)    │
+                         └──┬─────────────────────────────┬────┘
+                            │                             │
+                   chat/stream/approvals              documents only
+                            │                             │
+                            ▼                             │
+             ┌──────────────────────────────┐             │
+             │    Coordinator (8001)        │             │
+             │  ─ Orchestration             │             │
+             │  ─ Routing / Tool Selection  │             │
+             │  ─ Clarification / Approval  │             │
+             │  ─ Conversation proxy        │             │
+             └──┬────────┬────────┬───────┬─┘             │
+                │        │        │       │               │
+                ▼        ▼        ▼       ▼               ▼
+              ┌────┐  ┌────┐  ┌────┐    ┌────┐      ┌─────────────┐
+              │RAG │  │LLM │  │MCP │    │Open│      │  RAG (8000) │
+              └────┘  └────┘  └────┘    │AI  │      │  documents  │
+                │                       └────┘      └─────────────┘
+                └───────── (فقط داخلی، بدون host port) ───┘
