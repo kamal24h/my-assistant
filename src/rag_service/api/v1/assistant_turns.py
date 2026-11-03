@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy.orm import Session
 from core.database import get_db
-from core.security import require_api_key
+#from core.security import require_api_key
 from services.conversation_service import ConversationService
 from schemas.conversation import MessageOut
 

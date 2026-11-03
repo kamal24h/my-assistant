@@ -7,8 +7,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # تنظیمات احراز هویت
-    api_key: Optional[str] = None
-    api_key_header_name: str = "X-API-Key"
+    # NOTE: احراز هویت API از این سرویس حذف شده است.
+    # RAG سرویس کاملاً داخلی است و فقط از طریق coordinator یا assistant-api
+    # (در همان network) قابل دسترسی است. امنیت از طریق جداسازی شبکه تأمین می‌شود.
+    # اگر در آینده نیاز به احراز هویت داخلی شد، از mTLS یا service mesh استفاده کنید.
+    # api_key: Optional[str] = None
+    # api_key_header_name: str = "X-API-Key"
 
     # تنظیمات پایگاه داده رابطه‌ای (PostgreSQL)
     postgres_user: str = "assistant_user"

@@ -1,8 +1,8 @@
 # src/rag_service/main.py
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends
-from core.security import require_api_key
+from fastapi import FastAPI #, Depends
+#from core.security import require_api_key
 from core.database import (Base, engine)
 from api.v1.conversations import router as conversations_router
 from api.v1.messages import router as messages_router
@@ -64,9 +64,9 @@ async def health():
     return {
         "status": "healthy"
     }
-
-@app.get("/test-protected", dependencies=[Depends(require_api_key)])
-async def test_protected():
-    return {
-            "status": "healthy"
-        }
+# Security file in core filder has been commented.
+# @app.get("/test-protected", dependencies=[Depends(require_api_key)])
+# async def test_protected():
+#     return {
+#             "status": "healthy"
+#         }
