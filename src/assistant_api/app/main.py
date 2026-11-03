@@ -308,6 +308,68 @@ async def message_liked(
 
 
 # ---------------------------------------------------------
+# SSE streaming — forward to Coordinator
+# ---------------------------------------------------------
+
+async def _stream_coordinator(
+    request: Request,
+    payload_json: dict[str, Any],
+    forward_auth: str | None,
+):
+    """Async generator that yields raw SSE bytes from Coordinator.
+
+    On Coordinator-side errors (non-200), emits an SSE `error` event so
+    that EventSource parsers see a uniform protocol. On network failures,
+    emits an SSE `error` event as well.
+    """
+    headers = _coordinator_headers(forward_auth=forward_auth)
+    url = f"{COORDINATOR_URL}/api/v1/assistant/chat/stream"
+
+    try:
+        async with request.app.state.http.stream(
+            "POST", url, json=payload_json, headers=headers,
+        ) as response:
+            if response.status_code >= 400:
+                raw = await response.aread()
+                try:
+                    detail = json.loads(raw).get("detail", {"code": "coordinator_error"})
+                except Exception:
+                    detail = {"code": "coordinator_error", "message": "Non-JSON error response."}
+                data = json.dumps(detail, ensure_ascii=False)
+                yield f"event: error\ndata: {data}\n\n".encode("utf-8")
+                return
+            async for chunk in response.aiter_bytes():
+                yield chunk
+    except httpx.TimeoutException:
+        yield b'event: error\ndata: {"code": "coordinator_timeout"}\n\n'
+    except httpx.HTTPError:
+        yield b'event: error\ndata: {"code": "coordinator_unavailable"}\n\n'
+
+
+@app.post("/api/v1/assistant/chat/stream")
+async def chat_stream(
+    payload: ChatRequest,
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    authorization: str | None = Header(default=None),
+):
+    _check_api_key(x_api_key)
+    if authorization and not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail={"code": "invalid_authorization_scheme"})
+
+    payload_json = payload.model_dump(exclude_none=True, by_alias=True)
+
+    return StreamingResponse(
+        _stream_coordinator(request, payload_json, authorization),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ---------------------------------------------------------
 # Approval proxies (to Coordinator)
 # ---------------------------------------------------------
 
@@ -546,3 +608,19 @@ async def delete_document(
     return await _rag_forward(
         request, "DELETE", f"/api/v1/documents/{document_id}",
     )
+
+# 01. imports
+# 02. env constants
+# 03. schemas (ChatRequest, ApprovalActionRequest)
+# 04. lifespan
+# 05. app = FastAPI(...)
+# 06. auth helpers (_check_api_key, _coordinator_headers)
+# 07. forward helpers (_coordinator_forward, _rag_forward)
+# 08. health()
+# 09. chat() non-stream
+# 10. SSE helper (_stream_coordinator)
+# 11. chat_stream()
+# 12. conversation proxies (6 endpoints)
+# 13. approval proxies (3 endpoints)
+# 14. document proxies (9 endpoints)
+
