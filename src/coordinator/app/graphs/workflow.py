@@ -107,6 +107,7 @@ def get_local_llm_chain():
         base_url=settings.ollama_base_url,
         temperature=settings.local_llm_temperature,
         num_predict=settings.local_llm_num_predict,
+        reasoning=False,
     )
     return prompt | llm | StrOutputParser()
 
@@ -121,6 +122,7 @@ def get_router_chain():
         base_url=settings.ollama_base_url,
         temperature=0,
         num_predict=settings.router_num_predict,
+        reasoning=False,
     )
     return prompt | llm | StrOutputParser()
 
@@ -135,6 +137,7 @@ async def _stream_local_llm(question: str):
         base_url=settings.ollama_base_url,
         temperature=settings.local_llm_temperature,
         num_predict=settings.local_llm_num_predict,
+        reasoning=False,
     )
     chain = prompt | llm
     async for chunk in chain.astream({"question": question}):
@@ -533,6 +536,7 @@ async def select_erp_tool(question: str, tools: list[dict[str, Any]]) -> dict[st
         base_url=settings.ollama_base_url,
         temperature=0,
         num_predict=256,
+        reasoning=False,
     ) | StrOutputParser()
     raw = (await chain.ainvoke({
         "question": question,
@@ -559,6 +563,7 @@ async def summarize_erp_result(question: str, tool_name: str, result: dict[str, 
         base_url=settings.ollama_base_url,
         temperature=settings.local_llm_temperature,
         num_predict=settings.local_llm_num_predict,
+        reasoning=False,
     ) | StrOutputParser()
     return await chain.ainvoke({
         "question": question,

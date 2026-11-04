@@ -167,6 +167,7 @@ def build_llm_chain(settings_obj: Any):
         base_url=settings_obj.ollama_base_url,
         temperature=0,
         num_predict=settings_obj.clarification_num_predict,
+        reasoning=False,
     )
     return llm | StrOutputParser()
 
