@@ -1,0 +1,2533 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "ERP Smart Assistant API",
+        "description": "Public entry point for ERP Smart Assistant. Chat, streaming, conversations, and approvals are forwarded to the Coordinator. Document management is forwarded directly to the RAG service. Legacy endpoints (POST /conversations, POST /messages) are preserved for compatibility.",
+        "version": "1.3.0"
+    },
+    "paths": {
+        "/health": {
+            "get": {
+                "tags": [
+                    "Health"
+                ],
+                "summary": "Health",
+                "operationId": "health_health_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/assistant/chat": {
+            "post": {
+                "tags": [
+                    "Assistant"
+                ],
+                "summary": "Chat",
+                "operationId": "chat_api_v1_assistant_chat_post",
+                "parameters": [
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    },
+                    {
+                        "name": "authorization",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Authorization"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ChatRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/assistant/chat/stream": {
+            "post": {
+                "tags": [
+                    "Assistant"
+                ],
+                "summary": "Chat Stream",
+                "operationId": "chat_stream_api_v1_assistant_chat_stream_post",
+                "parameters": [
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    },
+                    {
+                        "name": "authorization",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Authorization"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ChatRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/conversations": {
+            "post": {
+                "tags": [
+                    "Conversations"
+                ],
+                "summary": "Create conversation (legacy, forwarded to RAG)",
+                "description": "Legacy endpoint. In the new flow, conversations are created automatically on the first chat. Preserved for backward compatibility.",
+                "operationId": "create_conversation_api_v1_conversations_post",
+                "parameters": [
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ConversationCreate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConversationOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "get": {
+                "tags": [
+                    "Conversations"
+                ],
+                "summary": "List Conversations",
+                "operationId": "list_conversations_api_v1_conversations_get",
+                "parameters": [
+                    {
+                        "name": "tenantId",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 100,
+                            "title": "Tenantid"
+                        }
+                    },
+                    {
+                        "name": "userId",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200,
+                            "title": "Userid"
+                        }
+                    },
+                    {
+                        "name": "appId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "maxLength": 100
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Appid"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 100,
+                            "minimum": 1,
+                            "default": 20,
+                            "title": "Limit"
+                        }
+                    },
+                    {
+                        "name": "offset",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "default": 0,
+                            "title": "Offset"
+                        }
+                    },
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ConversationOut"
+                                    },
+                                    "title": "Response List Conversations Api V1 Conversations Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/conversations/{conversation_id}": {
+            "get": {
+                "tags": [
+                    "Conversations"
+                ],
+                "summary": "Get Conversation",
+                "operationId": "get_conversation_api_v1_conversations__conversation_id__get",
+                "parameters": [
+                    {
+                        "name": "conversation_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Conversation Id"
+                        }
+                    },
+                    {
+                        "name": "tenantId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "maxLength": 100
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Tenantid"
+                        }
+                    },
+                    {
+                        "name": "userId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "maxLength": 200
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Userid"
+                        }
+                    },
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConversationDetailOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "tags": [
+                    "Conversations"
+                ],
+                "summary": "Update Conversation",
+                "operationId": "update_conversation_api_v1_conversations__conversation_id__patch",
+                "parameters": [
+                    {
+                        "name": "conversation_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Conversation Id"
+                        }
+                    },
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ConversationUpdate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConversationOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/conversations/{conversation_id}/feedback": {
+            "patch": {
+                "tags": [
+                    "Conversations"
+                ],
+                "summary": "Conversation Feedback",
+                "operationId": "conversation_feedback_api_v1_conversations__conversation_id__feedback_patch",
+                "parameters": [
+                    {
+                        "name": "conversation_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Conversation Id"
+                        }
+                    },
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ConversationFeedbackRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/conversations/{conversation_id}/messages": {
+            "get": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "List Messages",
+                "operationId": "list_messages_api_v1_conversations__conversation_id__messages_get",
+                "parameters": [
+                    {
+                        "name": "conversation_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Conversation Id"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 200,
+                            "minimum": 1,
+                            "default": 50,
+                            "title": "Limit"
+                        }
+                    },
+                    {
+                        "name": "offset",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "default": 0,
+                            "title": "Offset"
+                        }
+                    },
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/MessageOut"
+                                    },
+                                    "title": "Response List Messages Api V1 Conversations  Conversation Id  Messages Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Send message (legacy alias for /assistant/chat)",
+                "description": "Legacy endpoint. Preserved for backward compatibility. Internally forwarded to /api/v1/assistant/chat on the Coordinator. New clients should use POST /api/v1/assistant/chat directly.",
+                "operationId": "send_message_legacy_api_v1_conversations__conversation_id__messages_post",
+                "parameters": [
+                    {
+                        "name": "conversation_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Conversation Id"
+                        }
+                    },
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    },
+                    {
+                        "name": "authorization",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Authorization"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SendMessageRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MessageOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/conversations/{conversation_id}/messages/{message_id}/liked": {
+            "patch": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Message Liked",
+                "operationId": "message_liked_api_v1_conversations__conversation_id__messages__message_id__liked_patch",
+                "parameters": [
+                    {
+                        "name": "conversation_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Conversation Id"
+                        }
+                    },
+                    {
+                        "name": "message_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Message Id"
+                        }
+                    },
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MessageLikeRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MessageOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/erp/approvals/{approval_id}": {
+            "get": {
+                "tags": [
+                    "ERP Approvals"
+                ],
+                "summary": "Get Erp Approval",
+                "operationId": "get_erp_approval_api_v1_erp_approvals__approval_id__get",
+                "parameters": [
+                    {
+                        "name": "approval_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Approval Id"
+                        }
+                    },
+                    {
+                        "name": "tenantId",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 100,
+                            "title": "Tenantid"
+                        }
+                    },
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/erp/approvals/{approval_id}/approve": {
+            "post": {
+                "tags": [
+                    "ERP Approvals"
+                ],
+                "summary": "Approve Erp Operation",
+                "operationId": "approve_erp_operation_api_v1_erp_approvals__approval_id__approve_post",
+                "parameters": [
+                    {
+                        "name": "approval_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Approval Id"
+                        }
+                    },
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    },
+                    {
+                        "name": "authorization",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Authorization"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ApprovalActionRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/erp/approvals/{approval_id}/reject": {
+            "post": {
+                "tags": [
+                    "ERP Approvals"
+                ],
+                "summary": "Reject Erp Operation",
+                "operationId": "reject_erp_operation_api_v1_erp_approvals__approval_id__reject_post",
+                "parameters": [
+                    {
+                        "name": "approval_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Approval Id"
+                        }
+                    },
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    },
+                    {
+                        "name": "authorization",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Authorization"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ApprovalActionRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/documents": {
+            "get": {
+                "tags": [
+                    "Documents"
+                ],
+                "summary": "List Documents",
+                "operationId": "list_documents_api_v1_documents_get",
+                "parameters": [
+                    {
+                        "name": "appId",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "maxLength": 100
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Appid"
+                        }
+                    },
+                    {
+                        "name": "department",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "maxLength": 100
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Department"
+                        }
+                    },
+                    {
+                        "name": "includeAllVersions",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false,
+                            "title": "Includeallversions"
+                        }
+                    },
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/DocumentOut"
+                                    },
+                                    "title": "Response List Documents Api V1 Documents Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/documents/app-ids": {
+            "get": {
+                "tags": [
+                    "Documents"
+                ],
+                "summary": "List Document App Ids",
+                "operationId": "list_document_app_ids_api_v1_documents_app_ids_get",
+                "parameters": [
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    },
+                                    "title": "Response List Document App Ids Api V1 Documents App Ids Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/documents/by-logical/{logical_doc_id}/versions": {
+            "get": {
+                "tags": [
+                    "Documents"
+                ],
+                "summary": "List Document Versions",
+                "operationId": "list_document_versions_api_v1_documents_by_logical__logical_doc_id__versions_get",
+                "parameters": [
+                    {
+                        "name": "logical_doc_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Logical Doc Id"
+                        }
+                    },
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/DocumentVersionItem"
+                                    },
+                                    "title": "Response List Document Versions Api V1 Documents By Logical  Logical Doc Id  Versions Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/documents/create": {
+            "post": {
+                "tags": [
+                    "Documents"
+                ],
+                "summary": "Upload a PDF or DOCX document",
+                "description": "Uploads a file, extracts text, chunks it, and indexes it in Qdrant. Creates a new version if the doc already exists.",
+                "operationId": "create_document_file_api_v1_documents_create_post",
+                "parameters": [
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_create_document_file_api_v1_documents_create_post"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/documents/create-text": {
+            "post": {
+                "tags": [
+                    "Documents"
+                ],
+                "summary": "Replace all text documents of an app (atomic)",
+                "description": "Replaces all text documents of an app_id in a single batch. If any document fails, none are committed (all-or-nothing). For per-document upsert/versioning, use /create-text2.",
+                "operationId": "create_text_documents_replace_api_v1_documents_create_text_post",
+                "parameters": [
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TextDocumentsRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/documents/create-text2": {
+            "post": {
+                "tags": [
+                    "Documents"
+                ],
+                "summary": "Upsert text documents (per-document commit)",
+                "description": "Upserts text documents with per-document commit/rollback. A failure in one document does not block the others. Creates a new version if the doc already exists (based on content hash).",
+                "operationId": "create_text_documents_upsert_api_v1_documents_create_text2_post",
+                "parameters": [
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TextDocumentsRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/documents/by-logical/{logical_doc_id}": {
+            "delete": {
+                "tags": [
+                    "Documents"
+                ],
+                "summary": "Delete versions of a logical document",
+                "description": "Deletes versions of a logical document. allVersions=False: only current, previous becomes current. allVersions=True: all versions from Postgres and Qdrant.",
+                "operationId": "delete_documents_by_logical_id_api_v1_documents_by_logical__logical_doc_id__delete",
+                "parameters": [
+                    {
+                        "name": "logical_doc_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Logical Doc Id"
+                        }
+                    },
+                    {
+                        "name": "allVersions",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false,
+                            "title": "Allversions"
+                        }
+                    },
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/documents/by-app/{app_id}": {
+            "delete": {
+                "tags": [
+                    "Documents"
+                ],
+                "summary": "Delete all documents of an app",
+                "operationId": "delete_documents_by_app_api_v1_documents_by_app__app_id__delete",
+                "parameters": [
+                    {
+                        "name": "app_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "App Id"
+                        }
+                    },
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/documents/{document_id}": {
+            "delete": {
+                "tags": [
+                    "Documents"
+                ],
+                "summary": "Delete a specific document version",
+                "description": "If this was the current version, the previous version becomes current.",
+                "operationId": "delete_document_api_v1_documents__document_id__delete",
+                "parameters": [
+                    {
+                        "name": "document_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Document Id"
+                        }
+                    },
+                    {
+                        "name": "X-API-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Api-Key"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "ApprovalActionRequest": {
+                "properties": {
+                    "tenantId": {
+                        "type": "string",
+                        "maxLength": 100,
+                        "minLength": 1,
+                        "title": "Tenantid"
+                    },
+                    "approverUserId": {
+                        "type": "string",
+                        "maxLength": 200,
+                        "minLength": 1,
+                        "title": "Approveruserid"
+                    },
+                    "comment": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Comment"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "tenantId",
+                    "approverUserId"
+                ],
+                "title": "ApprovalActionRequest"
+            },
+            "Body_create_document_file_api_v1_documents_create_post": {
+                "properties": {
+                    "file": {
+                        "type": "string",
+                        "contentMediaType": "application/octet-stream",
+                        "title": "File"
+                    },
+                    "docName": {
+                        "type": "string",
+                        "title": "Docname"
+                    },
+                    "docType": {
+                        "type": "string",
+                        "title": "Doctype"
+                    },
+                    "department": {
+                        "type": "string",
+                        "title": "Department"
+                    },
+                    "appId": {
+                        "type": "string",
+                        "title": "Appid"
+                    },
+                    "metadata": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Metadata"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "file",
+                    "docName",
+                    "docType",
+                    "department",
+                    "appId"
+                ],
+                "title": "Body_create_document_file_api_v1_documents_create_post"
+            },
+            "ChatRequest": {
+                "properties": {
+                    "requestId": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Requestid"
+                    },
+                    "conversationId": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Conversationid"
+                    },
+                    "messageId": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Messageid"
+                    },
+                    "appId": {
+                        "type": "string",
+                        "maxLength": 100,
+                        "minLength": 1,
+                        "title": "Appid"
+                    },
+                    "tenantId": {
+                        "type": "string",
+                        "maxLength": 100,
+                        "minLength": 1,
+                        "title": "Tenantid"
+                    },
+                    "userId": {
+                        "type": "string",
+                        "maxLength": 200,
+                        "minLength": 1,
+                        "title": "Userid"
+                    },
+                    "prompt": {
+                        "type": "string",
+                        "maxLength": 12000,
+                        "minLength": 1,
+                        "title": "Prompt"
+                    },
+                    "locale": {
+                        "type": "string",
+                        "maxLength": 20,
+                        "title": "Locale",
+                        "default": "fa-IR"
+                    },
+                    "metadata": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "title": "Metadata"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "appId",
+                    "tenantId",
+                    "userId",
+                    "prompt"
+                ],
+                "title": "ChatRequest"
+            },
+            "ConversationCreate": {
+                "properties": {
+                    "appId": {
+                        "type": "string",
+                        "title": "Appid"
+                    },
+                    "tenantId": {
+                        "type": "string",
+                        "title": "Tenantid"
+                    },
+                    "userId": {
+                        "type": "string",
+                        "title": "Userid"
+                    },
+                    "userName": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Username"
+                    },
+                    "tenantDesc": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tenantdesc"
+                    },
+                    "title": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "appId",
+                    "tenantId",
+                    "userId"
+                ],
+                "title": "ConversationCreate"
+            },
+            "ConversationDetailOut": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "app_id": {
+                        "type": "string",
+                        "title": "App Id"
+                    },
+                    "tenant_id": {
+                        "type": "string",
+                        "title": "Tenant Id"
+                    },
+                    "user_id": {
+                        "type": "string",
+                        "title": "User Id"
+                    },
+                    "user_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "User Name"
+                    },
+                    "tenant_desc": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tenant Desc"
+                    },
+                    "title": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title"
+                    },
+                    "status": {
+                        "type": "string",
+                        "title": "Status"
+                    },
+                    "feedback_score": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Feedback Score"
+                    },
+                    "created_at": {
+                        "title": "Created At"
+                    },
+                    "updated_at": {
+                        "title": "Updated At"
+                    },
+                    "ended_at": {
+                        "anyOf": [
+                            {},
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ended At"
+                    },
+                    "messages": {
+                        "items": {
+                            "$ref": "#/components/schemas/MessageOut"
+                        },
+                        "type": "array",
+                        "title": "Messages"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "app_id",
+                    "tenant_id",
+                    "user_id",
+                    "status",
+                    "created_at",
+                    "updated_at"
+                ],
+                "title": "ConversationDetailOut"
+            },
+            "ConversationFeedbackRequest": {
+                "properties": {
+                    "feedbackScore": {
+                        "type": "integer",
+                        "maximum": 5.0,
+                        "minimum": 1.0,
+                        "title": "Feedbackscore"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "feedbackScore"
+                ],
+                "title": "ConversationFeedbackRequest"
+            },
+            "ConversationOut": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "app_id": {
+                        "type": "string",
+                        "title": "App Id"
+                    },
+                    "tenant_id": {
+                        "type": "string",
+                        "title": "Tenant Id"
+                    },
+                    "user_id": {
+                        "type": "string",
+                        "title": "User Id"
+                    },
+                    "user_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "User Name"
+                    },
+                    "tenant_desc": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tenant Desc"
+                    },
+                    "title": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title"
+                    },
+                    "status": {
+                        "type": "string",
+                        "title": "Status"
+                    },
+                    "feedback_score": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Feedback Score"
+                    },
+                    "created_at": {
+                        "title": "Created At"
+                    },
+                    "updated_at": {
+                        "title": "Updated At"
+                    },
+                    "ended_at": {
+                        "anyOf": [
+                            {},
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ended At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "app_id",
+                    "tenant_id",
+                    "user_id",
+                    "status",
+                    "created_at",
+                    "updated_at"
+                ],
+                "title": "ConversationOut"
+            },
+            "ConversationUpdate": {
+                "properties": {
+                    "title": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title"
+                    },
+                    "status": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "enum": [
+                                    "active",
+                                    "closed",
+                                    "archived"
+                                ]
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Status"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "title": "ConversationUpdate"
+            },
+            "DocumentOut": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "logicalDocId": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Logicaldocid"
+                    },
+                    "version": {
+                        "type": "integer",
+                        "title": "Version"
+                    },
+                    "isCurrent": {
+                        "type": "boolean",
+                        "title": "Iscurrent"
+                    },
+                    "previousVersionId": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Previousversionid"
+                    },
+                    "contentHash": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Contenthash"
+                    },
+                    "docName": {
+                        "type": "string",
+                        "title": "Docname"
+                    },
+                    "docType": {
+                        "type": "string",
+                        "title": "Doctype"
+                    },
+                    "department": {
+                        "type": "string",
+                        "title": "Department"
+                    },
+                    "appId": {
+                        "type": "string",
+                        "title": "Appid"
+                    },
+                    "metadata": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": true,
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Metadata"
+                    },
+                    "chunksCount": {
+                        "type": "integer",
+                        "title": "Chunkscount"
+                    },
+                    "createdAt": {
+                        "title": "Createdat"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "logicalDocId",
+                    "version",
+                    "isCurrent",
+                    "docName",
+                    "docType",
+                    "department",
+                    "appId",
+                    "chunksCount",
+                    "createdAt"
+                ],
+                "title": "DocumentOut"
+            },
+            "DocumentVersionItem": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "version": {
+                        "type": "integer",
+                        "title": "Version"
+                    },
+                    "isCurrent": {
+                        "type": "boolean",
+                        "title": "Iscurrent"
+                    },
+                    "contentHash": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Contenthash"
+                    },
+                    "chunksCount": {
+                        "type": "integer",
+                        "title": "Chunkscount"
+                    },
+                    "createdAt": {
+                        "title": "Createdat"
+                    },
+                    "previousVersionId": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Previousversionid"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "version",
+                    "isCurrent",
+                    "chunksCount",
+                    "createdAt"
+                ],
+                "title": "DocumentVersionItem"
+            },
+            "HTTPValidationError": {
+                "properties": {
+                    "detail": {
+                        "items": {
+                            "$ref": "#/components/schemas/ValidationError"
+                        },
+                        "type": "array",
+                        "title": "Detail"
+                    }
+                },
+                "type": "object",
+                "title": "HTTPValidationError"
+            },
+            "MessageLikeRequest": {
+                "properties": {
+                    "liked": {
+                        "type": "boolean",
+                        "title": "Liked"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "liked"
+                ],
+                "title": "MessageLikeRequest"
+            },
+            "MessageOut": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "conversation_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Conversation Id"
+                    },
+                    "query": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Query"
+                    },
+                    "answer": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Answer"
+                    },
+                    "duration": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Duration"
+                    },
+                    "error": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Error"
+                    },
+                    "meta_info": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": true,
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Meta Info"
+                    },
+                    "liked": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Liked"
+                    },
+                    "created_at": {
+                        "title": "Created At"
+                    },
+                    "role": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Role"
+                    },
+                    "content": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Content"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "conversation_id",
+                    "created_at"
+                ],
+                "title": "MessageOut"
+            },
+            "SendMessageRequest": {
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "minLength": 1,
+                        "title": "Prompt"
+                    },
+                    "tenantId": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tenantid"
+                    },
+                    "userId": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Userid"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "prompt"
+                ],
+                "title": "SendMessageRequest"
+            },
+            "TextDocumentItem": {
+                "properties": {
+                    "doc_name": {
+                        "type": "string",
+                        "title": "Doc Name"
+                    },
+                    "metadata": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": true,
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Metadata"
+                    },
+                    "doc_type": {
+                        "type": "string",
+                        "const": "text",
+                        "title": "Doc Type",
+                        "default": "text"
+                    },
+                    "doc": {
+                        "type": "string",
+                        "title": "Doc"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "doc_name",
+                    "doc"
+                ],
+                "title": "TextDocumentItem"
+            },
+            "TextDocumentsRequest": {
+                "properties": {
+                    "app_id": {
+                        "type": "string",
+                        "title": "App Id"
+                    },
+                    "version": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Version"
+                    },
+                    "documents": {
+                        "items": {
+                            "$ref": "#/components/schemas/TextDocumentItem"
+                        },
+                        "type": "array",
+                        "title": "Documents"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "app_id",
+                    "documents"
+                ],
+                "title": "TextDocumentsRequest"
+            },
+            "ValidationError": {
+                "properties": {
+                    "loc": {
+                        "items": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "integer"
+                                }
+                            ]
+                        },
+                        "type": "array",
+                        "title": "Location"
+                    },
+                    "msg": {
+                        "type": "string",
+                        "title": "Message"
+                    },
+                    "type": {
+                        "type": "string",
+                        "title": "Error Type"
+                    },
+                    "input": {
+                        "title": "Input"
+                    },
+                    "ctx": {
+                        "type": "object",
+                        "title": "Context"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "loc",
+                    "msg",
+                    "type"
+                ],
+                "title": "ValidationError"
+            }
+        }
+    }
+}

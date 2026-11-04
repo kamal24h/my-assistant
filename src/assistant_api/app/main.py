@@ -1,13 +1,14 @@
 # src/assistant_api/app/main.py
 """Public Python/FastAPI gateway for ERP Smart Assistant.
 
-Architecture (final):
+Architecture:
   - Client talks ONLY to this service.
   - Chat/stream/approvals/conversations -> Coordinator (internal).
   - Documents -> RAG (internal, direct).
   - Coordinator, RAG, LLM, MCP are NOT exposed outside the assistant_network.
+  - Backward compatibility endpoints preserved for existing clients.
 
-Authentication model:
+Authentication:
   - Client authenticates with X-API-Key (ASSISTANT_API_KEY).
   - End-user SSO token is forwarded as Authorization: Bearer for MCP/approval.
   - Service-to-service credentials (APPROVAL_API_KEY) are added by this
@@ -19,7 +20,7 @@ import hmac
 import json
 import os
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Literal, Optional
 from uuid import UUID
 
 import httpx
@@ -29,16 +30,18 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-COORDINATOR_URL = os.getenv("COORDINATOR_URL", "http://coordinator:8101").rstrip("/")
-RAG_API_URL = os.getenv("RAG_API_URL", "http://rag:8102").rstrip("/")
+COORDINATOR_URL = os.getenv("COORDINATOR_URL", "http://coordinator:8001").rstrip("/")
+RAG_API_URL = os.getenv("RAG_API_URL", "http://fastapi:8000").rstrip("/")
 ASSISTANT_API_KEY = os.getenv("ASSISTANT_API_KEY", "").strip()
 APPROVAL_API_KEY = os.getenv("APPROVAL_API_KEY", "").strip()
 REQUEST_TIMEOUT = float(os.getenv("ASSISTANT_API_TIMEOUT_SECONDS", "90"))
 
 
-# ---------------------------------------------------------
+# ============================================================
 # Schemas
-# ---------------------------------------------------------
+# ============================================================
+
+# ---------- New schemas (chat, approvals) ----------
 
 class ChatRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
@@ -71,9 +74,124 @@ class ApprovalActionRequest(BaseModel):
     comment: str | None = Field(default=None, max_length=1000)
 
 
-# ---------------------------------------------------------
+# ---------- Compat schemas (from previous version) ----------
+
+class ConversationCreate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    appId: str
+    tenantId: str
+    userId: str
+    userName: Optional[str] = None
+    tenantDesc: Optional[str] = None
+    title: Optional[str] = None
+
+
+class ConversationUpdate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    title: Optional[str] = None
+    status: Optional[Literal["active", "closed", "archived"]] = None
+
+
+class ConversationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    app_id: str
+    tenant_id: str
+    user_id: str
+    user_name: Optional[str] = None
+    tenant_desc: Optional[str] = None
+    title: Optional[str] = None
+    status: str
+    feedback_score: Optional[int] = None
+    created_at: Any  # datetime — Any برای سازگاری
+    updated_at: Any
+    ended_at: Optional[Any] = None
+
+
+class MessageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    conversation_id: UUID
+    query: Optional[str] = None
+    answer: Optional[str] = None
+    duration: Optional[float] = None
+    error: Optional[str] = None
+    meta_info: Optional[dict[str, Any]] = None
+    liked: Optional[bool] = None
+    created_at: Any
+    role: Optional[str] = None
+    content: Optional[str] = None
+
+
+class ConversationDetailOut(ConversationOut):
+    messages: list[MessageOut] = Field(default_factory=list)
+
+
+class SendMessageRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    prompt: str = Field(min_length=1)
+    tenantId: Optional[str] = None
+    userId: Optional[str] = None
+
+
+class MessageLikeRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    liked: bool
+
+
+class ConversationFeedbackRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    feedbackScore: int = Field(ge=1, le=5)
+
+
+# ---------- Documents schemas (from RAG) ----------
+
+class DocumentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    logicalDocId: UUID
+    version: int
+    isCurrent: bool
+    previousVersionId: Optional[UUID] = None
+    contentHash: Optional[str] = None
+    docName: str
+    docType: str
+    department: str
+    appId: str
+    metadata: Optional[dict[str, Any]] = None
+    chunksCount: int
+    createdAt: Any
+
+
+class DocumentVersionItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    version: int
+    isCurrent: bool
+    contentHash: Optional[str] = None
+    chunksCount: int
+    createdAt: Any
+    previousVersionId: Optional[UUID] = None
+
+
+class TextDocumentItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    doc_name: str
+    metadata: Optional[dict[str, Any]] = None
+    doc_type: Literal["text"] = "text"
+    doc: str
+
+
+class TextDocumentsRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    app_id: str
+    version: Optional[str] = None
+    documents: list[TextDocumentItem]
+
+
+# ============================================================
 # App lifecycle
-# ---------------------------------------------------------
+# ============================================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -83,20 +201,21 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="ERP Smart Assistant API",
+    title="Arian Smart Assistant API",
     description=(
         "Public entry point for ERP Smart Assistant. "
         "Chat, streaming, conversations, and approvals are forwarded to the Coordinator. "
-        "Document management is forwarded directly to the RAG service."
+        "Document management is forwarded directly to the RAG service. "
+        "Legacy endpoints (POST /conversations, POST /messages) are preserved for compatibility."
     ),
-    version="1.2.0",
+    version="1.3.0",
     lifespan=lifespan,
 )
 
 
-# ---------------------------------------------------------
+# ============================================================
 # Auth helpers
-# ---------------------------------------------------------
+# ============================================================
 
 def _check_api_key(provided: str | None) -> None:
     # If ASSISTANT_API_KEY is configured, it is mandatory for every client call.
@@ -121,9 +240,9 @@ def _coordinator_headers(
     return headers
 
 
-# ---------------------------------------------------------
+# ============================================================
 # Forward helpers
-# ---------------------------------------------------------
+# ============================================================
 
 async def _coordinator_forward(
     request: Request,
@@ -192,11 +311,11 @@ async def _rag_forward(
     return body
 
 
-# ---------------------------------------------------------
+# ============================================================
 # Health
-# ---------------------------------------------------------
+# ============================================================
 
-@app.get("/health")
+@app.get("/health", tags=["Health"])
 async def health():
     return {
         "status": "healthy",
@@ -206,11 +325,11 @@ async def health():
     }
 
 
-# ---------------------------------------------------------
-# Chat (non-stream)
-# ---------------------------------------------------------
+# ============================================================
+# Chat  (new non-stream)
+# ============================================================
 
-@app.post("/api/v1/assistant/chat")
+@app.post("/api/v1/assistant/chat", tags=["Assistant"])
 async def chat(
     payload: ChatRequest,
     request: Request,
@@ -220,7 +339,6 @@ async def chat(
     _check_api_key(x_api_key)
     if authorization and not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail={"code": "invalid_authorization_scheme"})
-
     return await _coordinator_forward(
         request, "POST", "/api/v1/assistant/chat",
         json_body=payload.model_dump(exclude_none=True, by_alias=True),
@@ -239,7 +357,6 @@ async def _stream_coordinator(
 ):
     headers = _coordinator_headers(forward_auth=forward_auth)
     url = f"{COORDINATOR_URL}/api/v1/assistant/chat/stream"
-
     try:
         async with request.app.state.http.stream(
             "POST", url, json=payload_json, headers=headers,
@@ -261,7 +378,7 @@ async def _stream_coordinator(
         yield b'event: error\ndata: {"code": "coordinator_unavailable"}\n\n'
 
 
-@app.post("/api/v1/assistant/chat/stream")
+@app.post("/api/v1/assistant/chat/stream", tags=["Assistant"])
 async def chat_stream(
     payload: ChatRequest,
     request: Request,
@@ -271,24 +388,45 @@ async def chat_stream(
     _check_api_key(x_api_key)
     if authorization and not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail={"code": "invalid_authorization_scheme"})
-
-    payload_json = payload.model_dump(exclude_none=True, by_alias=True)
-
     return StreamingResponse(
-        _stream_coordinator(request, payload_json, authorization),
+        _stream_coordinator(
+            request,
+            payload.model_dump(exclude_none=True, by_alias=True),
+            authorization,
+        ),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
-# ---------------------------------------------------------
-# Conversation proxies (to Coordinator)
-# ---------------------------------------------------------
+# ============================================================
+# Conversation Management (compat + new)
+# ============================================================
 
-@app.get("/api/v1/conversations")
+@app.post(
+    "/api/v1/conversations",
+    response_model=ConversationOut,
+    tags=["Conversations"],
+    summary="Create conversation (legacy, forwarded to RAG)",
+    description="Legacy endpoint. In the new flow, conversations are created automatically on the first chat. Preserved for backward compatibility.",
+)
+async def create_conversation(
+    payload: ConversationCreate,
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _check_api_key(x_api_key)
+    return await _rag_forward(
+        request, "POST", "/api/v1/conversations",
+        json_body=payload.model_dump(exclude_none=True, by_alias=True),
+    )
+
+
+@app.get(
+    "/api/v1/conversations",
+    response_model=list[ConversationOut],
+    tags=["Conversations"],
+)
 async def list_conversations(
     request: Request,
     tenant_id: str = Query(alias="tenantId", min_length=1, max_length=100),
@@ -310,7 +448,11 @@ async def list_conversations(
     )
 
 
-@app.get("/api/v1/conversations/{conversation_id}")
+@app.get(
+    "/api/v1/conversations/{conversation_id}",
+    response_model=ConversationDetailOut,
+    tags=["Conversations"],
+)
 async def get_conversation(
     conversation_id: UUID,
     request: Request,
@@ -330,7 +472,50 @@ async def get_conversation(
     )
 
 
-@app.get("/api/v1/conversations/{conversation_id}/messages")
+@app.patch(
+    "/api/v1/conversations/{conversation_id}",
+    response_model=ConversationOut,
+    tags=["Conversations"],
+)
+async def update_conversation(
+    conversation_id: UUID,
+    payload: ConversationUpdate,
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _check_api_key(x_api_key)
+    return await _coordinator_forward(
+        request, "PATCH", f"/api/v1/conversations/{conversation_id}",
+        json_body=payload.model_dump(exclude_none=True, by_alias=True),
+    )
+
+
+@app.patch(
+    "/api/v1/conversations/{conversation_id}/feedback",
+    tags=["Conversations"],
+)
+async def conversation_feedback(
+    conversation_id: UUID,
+    payload: ConversationFeedbackRequest,
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _check_api_key(x_api_key)
+    return await _coordinator_forward(
+        request, "PATCH", f"/api/v1/conversations/{conversation_id}/feedback",
+        json_body=payload.model_dump(exclude_none=True, by_alias=True),
+    )
+
+
+# ============================================================
+# Messages (compat + new)
+# ============================================================
+
+@app.get(
+    "/api/v1/conversations/{conversation_id}/messages",
+    response_model=list[MessageOut],
+    tags=["Messages"],
+)
 async def list_messages(
     conversation_id: UUID,
     request: Request,
@@ -345,39 +530,111 @@ async def list_messages(
     )
 
 
-@app.patch("/api/v1/conversations/{conversation_id}")
-async def update_conversation(
+@app.post(
+    "/api/v1/conversations/{conversation_id}/messages",
+    response_model=MessageOut,
+    tags=["Messages"],
+    summary="Send message (legacy alias for /assistant/chat)",
+    description=(
+        "Legacy endpoint. Preserved for backward compatibility. "
+        "Internally forwarded to /api/v1/assistant/chat on the Coordinator. "
+        "New clients should use POST /api/v1/assistant/chat directly."
+    ),
+)
+async def send_message_legacy(
     conversation_id: UUID,
-    body: dict[str, Any],
+    payload: SendMessageRequest,
     request: Request,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    authorization: str | None = Header(default=None),
 ):
+    """Legacy: forward to Coordinator as a regular chat, then normalize the response
+    into the legacy MessageOut shape so old clients keep working unchanged."""
     _check_api_key(x_api_key)
-    return await _coordinator_forward(
-        request, "PATCH", f"/api/v1/conversations/{conversation_id}",
-        json_body=body,
+    if authorization and not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail={"code": "invalid_authorization_scheme"})
+
+    # Build a Coordinator ChatRequest. tenantId/userId are optional in legacy;
+    # if missing, we forward None and the Coordinator will reject with a clear error.
+    chat_payload: dict[str, Any] = {
+        "appId": "",  # filled below after resolving conversation
+        "tenantId": payload.tenantId or "",
+        "userId": payload.userId or "",
+        "prompt": payload.prompt,
+        "conversationId": str(conversation_id),
+    }
+
+    # Resolve appId from the existing conversation (needed by Coordinator's ChatRequest).
+    try:
+        conv = await _rag_forward(
+            request, "GET", f"/api/v1/conversations/{conversation_id}",
+            params={"tenantId": payload.tenantId} if payload.tenantId else None,
+        )
+    except HTTPException:
+        raise
+    chat_payload["appId"] = conv.get("app_id") or conv.get("appId") or ""
+    if not chat_payload["tenantId"] and conv.get("tenant_id"):
+        chat_payload["tenantId"] = conv["tenant_id"]
+    if not chat_payload["userId"] and conv.get("user_id"):
+        chat_payload["userId"] = conv["user_id"]
+
+    if not chat_payload["appId"] or not chat_payload["tenantId"] or not chat_payload["userId"]:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "missing_required_context",
+                    "message": "appId/tenantId/userId must be provided or resolvable from the conversation."},
+        )
+
+    chat_response = await _coordinator_forward(
+        request, "POST", "/api/v1/assistant/chat",
+        json_body=chat_payload,
+        forward_auth=authorization,
     )
 
+    # Normalize ChatResponse -> MessageOut for legacy clients.
+    # Legacy MessageOut fields: id, conversation_id, query, answer, duration,
+    # error, meta_info, liked, created_at, role, content.
+    message_id = chat_response.get("messageId") or chat_response.get("requestId")
+    answer = chat_response.get("answer")
+    selected = chat_response.get("selectedPath")
+    sources = chat_response.get("sources") or []
+    meta_info = {
+        "status": chat_response.get("status", "completed"),
+        "selectedPath": selected,
+        "sources": sources,
+    }
+    # If clarification or approval, surface them via meta_info so legacy UI still
+    # has something to show (answer already contains the human-readable text).
+    if chat_response.get("clarification"):
+        meta_info["clarification"] = chat_response["clarification"]
+    if chat_response.get("approvalId"):
+        meta_info["approvalId"] = chat_response["approvalId"]
+        meta_info["approvalExpiresAt"] = chat_response.get("approvalExpiresAt")
 
-@app.patch("/api/v1/conversations/{conversation_id}/feedback")
-async def conversation_feedback(
-    conversation_id: UUID,
-    body: dict[str, Any],
-    request: Request,
-    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
-):
-    _check_api_key(x_api_key)
-    return await _coordinator_forward(
-        request, "PATCH", f"/api/v1/conversations/{conversation_id}/feedback",
-        json_body=body,
-    )
+    return {
+        "id": message_id,
+        "conversation_id": chat_response.get("conversationId") or str(conversation_id),
+        "query": payload.prompt,
+        "answer": answer,
+        "duration": None,
+        "error": None,
+        "meta_info": meta_info,
+        "liked": None,
+        "created_at": None,  # RAG will fill on GET /messages
+        "role": None,
+        "content": None,
+    }
 
 
-@app.patch("/api/v1/conversations/{conversation_id}/messages/{message_id}/liked")
+@app.patch(
+    "/api/v1/conversations/{conversation_id}/messages/{message_id}/liked",
+    response_model=MessageOut,
+    tags=["Messages"],
+)
 async def message_liked(
     conversation_id: UUID,
     message_id: UUID,
-    body: dict[str, Any],
+    payload: MessageLikeRequest,
     request: Request,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
@@ -385,7 +642,7 @@ async def message_liked(
     return await _coordinator_forward(
         request, "PATCH",
         f"/api/v1/conversations/{conversation_id}/messages/{message_id}/liked",
-        json_body=body,
+        json_body=payload.model_dump(exclude_none=True, by_alias=True),
     )
 
 
@@ -393,7 +650,7 @@ async def message_liked(
 # Approval proxies (to Coordinator)
 # ---------------------------------------------------------
 
-@app.get("/api/v1/erp/approvals/{approval_id}")
+@app.get("/api/v1/erp/approvals/{approval_id}", tags=["ERP Approvals"])
 async def get_erp_approval(
     approval_id: UUID,
     request: Request,
@@ -408,7 +665,7 @@ async def get_erp_approval(
     )
 
 
-@app.post("/api/v1/erp/approvals/{approval_id}/approve")
+@app.post("/api/v1/erp/approvals/{approval_id}/approve", tags=["ERP Approvals"])
 async def approve_erp_operation(
     approval_id: UUID,
     payload: ApprovalActionRequest,
@@ -427,7 +684,7 @@ async def approve_erp_operation(
     )
 
 
-@app.post("/api/v1/erp/approvals/{approval_id}/reject")
+@app.post("/api/v1/erp/approvals/{approval_id}/reject", tags=["ERP Approvals"])
 async def reject_erp_operation(
     approval_id: UUID,
     payload: ApprovalActionRequest,
@@ -446,11 +703,15 @@ async def reject_erp_operation(
     )
 
 
-# ---------------------------------------------------------
-# Document management proxies (to RAG, direct)
-# ---------------------------------------------------------
+# ============================================================
+# Documents management proxies (to RAG, direct + with response_model + descriptions)
+# ============================================================
 
-@app.get("/api/v1/documents")
+@app.get(
+    "/api/v1/documents",
+    response_model=list[DocumentOut],
+    tags=["Documents"],
+)
 async def list_documents(
     request: Request,
     app_id: str | None = Query(default=None, alias="appId", max_length=100),
@@ -467,7 +728,11 @@ async def list_documents(
     return await _rag_forward(request, "GET", "/api/v1/documents", params=params)
 
 
-@app.get("/api/v1/documents/app-ids")
+@app.get(
+    "/api/v1/documents/app-ids",
+    response_model=list[str],
+    tags=["Documents"],
+)
 async def list_document_app_ids(
     request: Request,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
@@ -476,7 +741,11 @@ async def list_document_app_ids(
     return await _rag_forward(request, "GET", "/api/v1/documents/app-ids")
 
 
-@app.get("/api/v1/documents/by-logical/{logical_doc_id}/versions")
+@app.get(
+    "/api/v1/documents/by-logical/{logical_doc_id}/versions",
+    response_model=list[DocumentVersionItem],
+    tags=["Documents"],
+)
 async def list_document_versions(
     logical_doc_id: UUID,
     request: Request,
@@ -489,7 +758,12 @@ async def list_document_versions(
     )
 
 
-@app.post("/api/v1/documents/create")
+@app.post(
+    "/api/v1/documents/create",
+    tags=["Documents"],
+    summary="Upload a PDF or DOCX document",
+    description="Uploads a file, extracts text, chunks it, and indexes it in Qdrant. Creates a new version if the doc already exists.",
+)
 async def create_document_file(
     request: Request,
     file: UploadFile = File(...),
@@ -526,33 +800,60 @@ async def create_document_file(
     )
 
 
-@app.post("/api/v1/documents/create-text")
+@app.post(
+    "/api/v1/documents/create-text",
+    tags=["Documents"],
+    summary="Replace all text documents of an app (atomic)",
+    description=(
+        "Replaces all text documents of an app_id in a single batch. "
+        "If any document fails, none are committed (all-or-nothing). "
+        "For per-document upsert/versioning, use /create-text2."
+    ),
+)
 async def create_text_documents_replace(
-    body: dict[str, Any],
+    payload: TextDocumentsRequest,
     request: Request,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
     _check_api_key(x_api_key)
     return await _rag_forward(
         request, "POST", "/api/v1/documents/create-text",
-        json_body=body,
+        json_body=payload.model_dump(exclude_none=True, by_alias=True),
     )
 
 
-@app.post("/api/v1/documents/create-text2")
+@app.post(
+    "/api/v1/documents/create-text2",
+    tags=["Documents"],
+    summary="Upsert text documents (per-document commit)",
+    description=(
+        "Upserts text documents with per-document commit/rollback. "
+        "A failure in one document does not block the others. "
+        "Creates a new version if the doc already exists (based on content hash)."
+    ),
+)
 async def create_text_documents_upsert(
-    body: dict[str, Any],
+    payload: TextDocumentsRequest,
     request: Request,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
     _check_api_key(x_api_key)
     return await _rag_forward(
         request, "POST", "/api/v1/documents/create-text2",
-        json_body=body,
+        json_body=payload.model_dump(exclude_none=True, by_alias=True),
     )
 
 
-@app.delete("/api/v1/documents/by-logical/{logical_doc_id}")
+@app.delete(
+    "/api/v1/documents/by-logical/{logical_doc_id}",
+    tags=["Documents"],
+    summary="Delete versions of a logical document",
+    description=(
+        "Deletes versions of a logical document. "
+        "allVersions=False: only current, previous becomes current. "
+        "allVersions=True: all versions from Postgres and Qdrant."
+    ),
+)
 async def delete_documents_by_logical_id(
     logical_doc_id: UUID,
     request: Request,
@@ -567,7 +868,11 @@ async def delete_documents_by_logical_id(
     )
 
 
-@app.delete("/api/v1/documents/by-app/{app_id}")
+@app.delete(
+    "/api/v1/documents/by-app/{app_id}",
+    tags=["Documents"],
+    summary="Delete all documents of an app",
+)
 async def delete_documents_by_app(
     app_id: str,
     request: Request,
@@ -579,7 +884,12 @@ async def delete_documents_by_app(
     )
 
 
-@app.delete("/api/v1/documents/{document_id}")
+@app.delete(
+    "/api/v1/documents/{document_id}",
+    tags=["Documents"],
+    summary="Delete a specific document version",
+    description="If this was the current version, the previous version becomes current.",
+)
 async def delete_document(
     document_id: UUID,
     request: Request,
@@ -589,7 +899,6 @@ async def delete_document(
     return await _rag_forward(
         request, "DELETE", f"/api/v1/documents/{document_id}",
     )
-
 # 01. imports
 # 02. env constants
 # 03. schemas (ChatRequest, ApprovalActionRequest)
