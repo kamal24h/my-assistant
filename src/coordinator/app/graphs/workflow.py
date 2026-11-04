@@ -237,6 +237,23 @@ _REASON_HINTS = (
     "برای اینکه", "because", "reason:", "due to",
 )
 
+_SMALL_TALK_HINTS = (
+    "سلام", "درود", "وقت بخیر", "صبح بخیر", "ظهر بخیر", "عصر بخیر", "شب بخیر",
+    "خوبی", "چطوری", "چه خبر", "حالت چطوره",
+    "ممنون", "مرسی", "متشکرم", "سپاس",
+    "خداحافظ", "خدا نگهدار", "فعلا", "بای",
+    "hi", "hello", "hey", "thanks", "bye", "ok", "okay",
+)
+
+def _is_small_talk(text: str) -> bool:
+    lowered = text.casefold().strip()
+    # کوتاه و بدون شناسه/موجودیت
+    if len(lowered) > 50:
+        return False
+    if _has_identifier(text) or _has_entity_hint(text):
+        return False
+    return any(hint in lowered for hint in _SMALL_TALK_HINTS)
+
 
 def _has_identifier(text: str) -> bool:
     return any(p.search(text) for p in _ID_PATTERNS)
@@ -288,6 +305,10 @@ def _needs_clarification(
 ) -> tuple[bool, list[str], str]:
     """قاعده‌محور: آیا باید شفاف‌سازی خواست؟ خروجی (نیاز؟, فیلدهای ناقص, سؤال)."""
     text = prompt.strip()
+
+    # 0. Small talk: هرگز clarification نگیرد
+    if intent == "local_llm" and _is_small_talk(text):
+        return (False, [], "")
 
     # ۱. پرسش خیلی کوتاه
     if len(text) < settings.clarification_min_prompt_chars:
@@ -392,7 +413,11 @@ async def persist_non_rag_turn(req: ChatRequest, conversation_id: UUID, answer: 
                 json=payload, headers=_rag_headers(),
             )
             if response.is_error:
-                logger.error("RAG turn persistence failed: status=%s", response.status_code)
+                logger.error(
+                    "RAG turn persistence failed: status=%s body=%s",
+                    response.status_code,
+                    response.text[:500],   # ← اضافه کن
+                )
                 raise RagApiError(502, "conversation_persistence_failed")
             body = response.json()
             return UUID(str(body["id"]))
