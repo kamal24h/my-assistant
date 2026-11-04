@@ -85,3 +85,29 @@ If you want my recommendation, in order:
 6. **Verify `langchain_classic` dependency name.**
 
 Tell me which of these you want to tackle, and whether you want me to (a) just propose patches, (b) produce full replacement files, or (c) walk through one issue at a time. Also confirm whether the coordinator Dockerfile `CMD` points to `main:app` or `app.graphs.workflow:app`, since `main.py` is only a re-export shim.
+
+
+
+
+
+CONV=3580c7e7-a5b0-46a4-8646-d1d7e9ef8665
+curl -s -X POST "http://78.39.10.22:8089/api/v1/conversations/$CONV/messages" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"سلام، خوبی؟","tenantId":"t1","userId":"u1"}' | jq
+
+CONV=3580c7e7-a5b0-46a4-8646-d1d7e9ef8665
+curl -s "http://78.39.10.22:8089/api/v1/conversations/$CONV/messages?limit=10&offset=0" | jq
+
+CONV=3580c7e7-a5b0-46a4-8646-d1d7e9ef8665
+curl -s -X PATCH "http://78.39.10.22:8089/api/v1/conversations/$CONV" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"تست"}' | jq '.title'
+curl -s -X PATCH "http://78.39.10.22:8089/api/v1/conversations/$CONV/feedback" \
+  -H "Content-Type: application/json" \
+  -d '{"feedbackScore":4}' | jq
+
+MSG=<id از T-J02>
+curl -s -X PATCH "http://78.39.10.22:8089/api/v1/conversations/$CONV/messages/$MSG/liked" \
+  -H "Content-Type: application/json" \
+  -d '{"liked":true}' | jq '.liked'
+# انتظار: true
