@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/v1/conversations/{conv_id}", tags=["Assistant pe
 class AssistantTurnRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     prompt: str = Field(min_length=1, max_length=12000)
-    answer: str = Field(min_length=1, max_length=30000)
+    answer: str = Field(min_length=1, max_length=200000)
     tenantId: str = Field(min_length=1, max_length=100)
     userId: str = Field(min_length=1, max_length=200)
     # selectedPath: str = Field(pattern=r"^(local_llm|local_mcp)$")
