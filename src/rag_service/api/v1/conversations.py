@@ -26,7 +26,7 @@ router = APIRouter(
 def create_conversation(req: ConversationCreate, db: Session = Depends(get_db)):
     return ConversationService.create_conversation(
         db=db,
-        app_id=req.appId,
+        app_ids=req.appIds,
         tenant_id=req.tenantId,
         user_id=req.userId,
         title=req.title,

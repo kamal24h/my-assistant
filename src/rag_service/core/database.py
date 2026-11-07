@@ -49,7 +49,8 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    app_id = Column(String(100), nullable=False)
+    app_id = Column(String(100), nullable=True)
+    app_ids = Column(JSONB, nullable=True)
     tenant_id = Column(String(100), nullable=False)
     user_id = Column(String(100), nullable=False)
     user_name = Column(String(255), nullable=True)
@@ -69,7 +70,14 @@ class Conversation(Base):
     )
 
     __table_args__ = (
-        Index("ix_conversations_user_tenant_app", "tenant_id", "user_id", "app_id"),
+        # پیشوند (tenant_id, user_id) که همیشه در WHERE هست
+        Index("ix_conversations_tenant_user", "tenant_id", "user_id"),
+        # برای فیلتر app_ids.contains([...])
+        Index(
+            "ix_conversations_app_ids",
+            "app_ids",
+            postgresql_using="gin",
+        ),
         Index("ix_conversations_updated_at", "updated_at"),
     )
 

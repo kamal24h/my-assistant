@@ -72,9 +72,16 @@ def send_message(
 
     started_at = time.perf_counter()
     try:
+        # لیست appIdها را از conversation بردار
+        app_ids = conv.app_ids or ([conv.app_id] if conv.app_id else [])
+        if not app_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="این مکالمه appId معتبری ندارد.",
+            )
         answer, sources, form_id = generate_rag_response(
             question=req.prompt,
-            app_id=conv.app_id,
+            app_ids=app_ids,
             chat_history=history,
         )
         answer, _guardrail_flags = guard_output(answer)
@@ -90,6 +97,7 @@ def send_message(
                 "sources": sources or [],
                 "status": "completed",
                 "formId": form_id,
+                "searchedAppIds": app_ids,      # ← برای ردیابی
             },
         )
         return completed

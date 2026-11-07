@@ -7,7 +7,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.output_parsers import StrOutputParser
 from qdrant_client import QdrantClient
-from qdrant_client.http.models import Filter, FieldCondition, MatchValue
+from qdrant_client.http.models import Filter, FieldCondition, MatchValue, MatchAny
 
 from core.config import settings
 from services.reranker_service import rerank_documents  # ← Reranker از سرویس مستقل
@@ -80,7 +80,7 @@ SYSTEM_PROMPT = """
 
 def generate_rag_response(
     question: str,
-    app_id: str,
+    app_ids: List[str],
     chat_history: Optional[List[Tuple[str, str]]] = None,
     k_docs: int = 15,
     final_k: int = 5,
@@ -113,10 +113,12 @@ def generate_rag_response(
         answer = llm.invoke(prompt).content
         return answer, [], None  # sources خالی، formId None
 
-    # ۲. اگر سؤال واقعی است، RAG را اجرا کن (کد فعلی)
-    app_id = (app_id or "").strip()
-    if not app_id:
-        raise ValueError("app_id برای جست‌وجوی RAG الزامی است.")
+    # ۲. نرمال‌سازی ورودی: هم رشته و هم لیست را بپذیر (defensive)
+    if isinstance(app_ids, str):
+        app_ids = [app_ids]
+    app_ids = [a.strip() for a in (app_ids or []) if a and a.strip()]
+    if not app_ids:
+        raise ValueError("حداقل یک appId برای جست‌وجوی RAG الزامی است.")
 
     vector_store = QdrantVectorStore(
         client=client,
@@ -128,7 +130,7 @@ def generate_rag_response(
         must=[
             FieldCondition(
                 key="metadata.app_id",
-                match=MatchValue(value=app_id),
+                match=MatchAny(any=app_ids),
             ),
             FieldCondition(
                 key="metadata.is_current",
@@ -204,7 +206,7 @@ def generate_rag_response(
         source: Dict[str, Any] = {
             "doc_id": md.get("doc_id"),
             "doc_name": md.get("doc_name"),
-            "app_id": md.get("app_id", app_id),
+            "app_id": md.get("app_id"),
             "chunk_id": str(chunk_id),
             "chunk_hash": str(chunk_hash),
             "chunk_text": chunk_text,
@@ -223,8 +225,8 @@ def generate_rag_response(
         sources.append(source)
 
     logger.info(
-        "RAG final: %d docs (initial k=%d) for app_id=%s, question=%r",
-        len(reranked_docs), k_docs, app_id, question[:80],
+        "RAG final: %d docs (initial k=%d) for app_ids=%s, question=%r",
+        len(reranked_docs), k_docs, app_ids, question[:80],
     )
 
     context_text = "\n\n".join(context_parts)

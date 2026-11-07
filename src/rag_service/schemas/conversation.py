@@ -2,15 +2,28 @@
 import uuid
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Literal
-from pydantic import BaseModel, ConfigDict, Field, conint
+from pydantic import (
+    BaseModel, ConfigDict, Field, conint, model_validator, AliasChoices,
+)
+
 
 class ConversationCreate(BaseModel):
-    appId: str
+    appId: Optional[str] = None
+    appIds: Optional[List[str]] = None
     tenantId: str
     userId: str
     userName: Optional[str] = None
     tenantDesc: Optional[str] = None
     title: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _normalize_app_ids(self):
+        ids = self.appIds or ([self.appId] if self.appId else [])
+        # حذف تکراری‌ها و مقادیر خالی
+        self.appIds = list(dict.fromkeys(x.strip() for x in ids if x and x.strip()))
+        if not self.appIds:
+            raise ValueError("حداقل یک appId لازم است.")
+        return self
 
 
 class ConversationUpdate(BaseModel):
@@ -39,7 +52,8 @@ class MessageOut(BaseModel):
 
 class ConversationOut(BaseModel):
     id: uuid.UUID
-    app_id: str
+    appId: Optional[str] = Field(None, validation_alias=AliasChoices("appId", "app_id"))
+    appIds: List[str] = Field(default_factory=list, validation_alias=AliasChoices("appIds", "app_ids"))
     tenant_id: str
     user_id: str
     user_name: Optional[str] = None
@@ -50,6 +64,14 @@ class ConversationOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     ended_at: Optional[datetime] = None
+
+    @model_validator(mode="after")
+    def _fill_app_ids(self):
+        if not self.appIds:
+            self.appIds = [self.appId] if self.appId else []
+        if self.appId is None and self.appIds:
+            self.appId = self.appIds[0]
+        return self
 
     class Config:
         from_attributes = True

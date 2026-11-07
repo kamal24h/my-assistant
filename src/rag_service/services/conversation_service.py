@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Optional, List, Tuple
 
-from sqlalchemy import desc
+from sqlalchemy import desc, or_ 
 from sqlalchemy.orm import Session
 
 from core.config import settings
@@ -33,7 +33,7 @@ class ConversationService:
     @staticmethod
     def create_conversation(
         db: Session,
-        app_id: str,
+        app_ids: List[str],
         tenant_id: str,
         user_id: str,
         title: Optional[str] = None,
@@ -42,7 +42,8 @@ class ConversationService:
     ) -> Conversation:
         conv = Conversation(
             id=uuid.uuid4(),
-            app_id=app_id.strip(),
+            app_id=app_ids[0].strip(),  # سازگاری
+            app_ids=app_ids,            # منبع حقیقت
             tenant_id=tenant_id,
             user_id=user_id,
             user_name=user_name,
@@ -60,7 +61,8 @@ class ConversationService:
                 ConversationCache.create_conversation(
                     redis_client,
                     str(conv.id),
-                    app_id=conv.app_id,
+                    app_ids=conv.app_ids or ([conv.app_id] if conv.app_id else []),
+                    #app_id=conv.app_id,
                     tenant_id=conv.tenant_id,
                     user_id=conv.user_id,
                     user_name=conv.user_name,
@@ -101,7 +103,12 @@ class ConversationService:
             Conversation.user_id == user_id,
         )
         if app_id:
-            q = q.filter(Conversation.app_id == app_id)
+            #q = q.filter(Conversation.app_id == app_id)
+
+            q = q.filter(or_(
+                Conversation.app_ids.contains([app_id]),
+                Conversation.app_id == app_id,
+            ))
 
         return (
             q.order_by(desc(Conversation.updated_at))

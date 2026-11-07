@@ -40,7 +40,7 @@ class ConversationCache:
     def create_conversation(
         redis_client: redis.Redis,
         conv_id: str,
-        app_id: str,
+        app_ids: List[str],
         tenant_id: str,
         user_id: str,
         user_name: Optional[str] = None,
@@ -50,7 +50,8 @@ class ConversationCache:
         key = f"conv:{conv_id}:meta"
         data = {
             "conversation_id": conv_id,
-            "app_id": app_id,
+            "app_ids": app_ids,      # جدید
+            "app_id": app_ids[0],    # سازگاری
             "tenant_id": tenant_id,
             "user_id": user_id,
             "user_name": user_name,
