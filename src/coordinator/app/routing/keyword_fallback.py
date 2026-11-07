@@ -1,14 +1,34 @@
 # src/coordinator/app/routing/keyword_fallback.py
+"""Deterministic keyword fallback for intent classification.
 
+Used when structured LLM output is unavailable or throws. Precedence:
+  1. Empty input -> AMBIGUOUS
+  2. Small talk -> SMALL_TALK
+  3. Procedural wording -> DOCUMENT_QUERY
+  4. Explicit ERP write -> ERP_ACTION
+  5. Actual ERP data hints -> ERP_DATA_QUERY
+  6. Default -> DOCUMENT_QUERY (preserves safe, RAG-first behavior)
+
+Note on normalization:
+  - Persian ZWNJ (U+200C) is converted to a regular space in `_normalize_fa`.
+  - Pattern texts MUST therefore use `\\s*` (or plain spaces) instead of ZWNJ,
+    otherwise the regex won't match after normalization.
+"""
 from __future__ import annotations
 
 import re
 
-from .intent_schemas import IntentDecision
+from app.routing.intent_schemas import IntentDecision
 
 
 def _normalize_fa(text: str) -> str:
-    """Normalize common Persian/Arabic character and whitespace variants."""
+    """Normalize Persian/Arabic character and whitespace variants.
+
+    - ي -> ی, ك -> ک
+    - ZWNJ (U+200C) -> space
+    - remove Arabic diacritics
+    - collapse whitespace
+    """
     text = (text or "").casefold().replace("ي", "ی").replace("ك", "ک")
     text = text.replace("\u200c", " ")
     text = re.sub(r"[\u064b-\u065f\u0670]", "", text)
@@ -16,27 +36,55 @@ def _normalize_fa(text: str) -> str:
 
 
 def _is_small_talk(text: str) -> bool:
-    exact = {
-        "سلام",
-        "درود",
-        "صبح بخیر",
-        "وقت بخیر",
-        "خسته نباشید",
-        "ممنون",
-        "متشکرم",
-        "سپاس",
-        "خداحافظ",
-        "شب بخیر",
-    }
+    """Conservative small-talk detector.
 
-    return text in exact or any(
-        text.startswith(prefix) and len(text) <= len(prefix) + 12
-        for prefix in ("سلام ", "درود ", "ممنون ", "متشکرم ")
+    True only for greetings/thanks/farewells, and only when the prompt
+    does not also contain an identifier or entity hint.
+    """
+    normalized = _normalize_fa(text)
+    if not normalized:
+        return True
+    # If an identifier or an ERP entity is present, it's not small talk.
+    if _has_identifier(normalized) or _has_entity_hint(normalized):
+        return False
+
+    exact = {
+        "سلام", "درود", "صبح بخیر", "وقت بخیر", "خسته نباشید",
+        "ممنون", "متشکرم", "سپاس", "خداحافظ", "شب بخیر",
+    }
+    if normalized in exact:
+        return True
+
+    # Allow a short trailing phrase after the greeting.
+    prefixes = ("سلام ", "درود ", "ممنون ", "متشکرم ", "وقت بخیر ")
+    return any(
+        normalized.startswith(p) and len(normalized) <= len(p) + 20
+        for p in prefixes
     )
 
 
-# Explicit change commands only.
-# Bare ERP nouns must never trigger write operations.
+# ---------- Entity / identifier helpers ----------
+_ID_PATTERNS = (
+    re.compile(r"\b(?:SO|PO|INV|ORD|PR)-?\d{3,}\b", re.I),
+    re.compile(r"\b\d{4,}\b"),
+    re.compile(r"[\w۰-۹0-9]{4,}"),
+)
+_ENTITY_HINTS = (
+    "سفارش", "فاکتور", "درخواست", "محصول", "کالا", "انبار", "مشتری",
+    "order", "invoice", "product", "item",
+)
+
+
+def _has_identifier(text: str) -> bool:
+    return any(p.search(text) for p in _ID_PATTERNS)
+
+
+def _has_entity_hint(text: str) -> bool:
+    lowered = text.casefold()
+    return any(h in lowered for h in _ENTITY_HINTS)
+
+
+# ---------- Explicit write commands ----------
 _WRITE_PATTERNS = (
     r"ثبت\s+کن",
     r"ایجاد\s+کن",
@@ -55,7 +103,7 @@ _WRITE_PATTERNS = (
 )
 
 
-# Strong indicators of requests for actual ERP records or values.
+# ---------- ERP data hints ----------
 _DATA_PATTERNS = (
     r"وضعیت\s+(?:فاکتور|سفارش|درخواست|خرید|تولید)",
     r"(?:فاکتور|سفارش|درخواست)\s+(?:شماره|#)\s*[\w۰-۹0-9-]+",
@@ -66,10 +114,11 @@ _DATA_PATTERNS = (
 )
 
 
-# Indicators of internal documentation or procedural questions.
-# These take precedence over ERP entity names.
+# ---------- Documentation/procedure hints ----------
+# IMPORTANT: ZWNJ is converted to space by _normalize_fa; use `\s*` or
+# plain spaces here, never ZWNJ.
 _DOC_PATTERNS = (
-    r"چطور(?:\s+می‌توانم|\s+میتوانم)?",
+    r"چطور(?:\s*می\s*توانم|\s*میتوانم)?",
     r"چگونه",
     r"مراحل",
     r"نحوه",
@@ -85,19 +134,22 @@ _DOC_PATTERNS = (
 )
 
 
+def _match_any(text: str, patterns: tuple[str, ...]) -> bool:
+    return any(re.search(p, text) for p in patterns)
+
+
+# ---------- Public API ----------
 def keyword_fallback(question: str) -> IntentDecision:
-    """
-    Conservative fallback for when the semantic model is unavailable.
+    """Return a deterministic IntentDecision.
 
-    Priority:
-    1. Empty input
-    2. Small talk
-    3. Document/procedure questions
-    4. Explicit ERP write actions
-    5. Actual ERP data queries
-    6. Default to Local RAG
+    Precedence:
+      1. empty -> AMBIGUOUS
+      2. small talk -> SMALL_TALK
+      3. procedural wording -> DOCUMENT_QUERY
+      4. explicit write -> ERP_ACTION
+      5. actual ERP data hints -> ERP_DATA_QUERY
+      6. default -> DOCUMENT_QUERY
     """
-
     text = _normalize_fa(question)
 
     if not text:
@@ -110,7 +162,6 @@ def keyword_fallback(question: str) -> IntentDecision:
             clarification_question="لطفاً درخواست خود را توضیح دهید.",
         )
 
-    # Small talk → Local LLM
     if _is_small_talk(text):
         return IntentDecision(
             intent="SMALL_TALK",
@@ -119,9 +170,8 @@ def keyword_fallback(question: str) -> IntentDecision:
             reasoning="پیام از نوع گفت‌وگوی کوتاه است.",
         )
 
-    # Procedural wording takes precedence over ERP entity words.
-    # Example: "فاکتور فروش چگونه صادر می‌شود؟" → Local RAG
-    if any(re.search(pattern, text) for pattern in _DOC_PATTERNS):
+    # Documentation takes precedence over ERP entity names.
+    if _match_any(text, _DOC_PATTERNS):
         return IntentDecision(
             intent="DOCUMENT_QUERY",
             routes=["local_rag"],
@@ -129,8 +179,7 @@ def keyword_fallback(question: str) -> IntentDecision:
             reasoning="پرسش درباره روش، مراحل یا دستورالعمل است.",
         )
 
-    # Explicit ERP write request → ERP Write
-    if any(re.search(pattern, text) for pattern in _WRITE_PATTERNS):
+    if _match_any(text, _WRITE_PATTERNS):
         return IntentDecision(
             intent="ERP_ACTION",
             routes=["erp_write"],
@@ -138,8 +187,7 @@ def keyword_fallback(question: str) -> IntentDecision:
             reasoning="فعل صریح برای تغییر یا اجرای عملیات ERP وجود دارد.",
         )
 
-    # Actual ERP record/status query → MCP
-    if any(re.search(pattern, text) for pattern in _DATA_PATTERNS):
+    if _match_any(text, _DATA_PATTERNS):
         return IntentDecision(
             intent="ERP_DATA_QUERY",
             routes=["local_mcp"],
@@ -147,8 +195,6 @@ def keyword_fallback(question: str) -> IntentDecision:
             reasoning="پرسش درباره وضعیت یا مقدار یک رکورد واقعی ERP است.",
         )
 
-    # Default → Local RAG
-    # This preserves the previous safe behavior for internal/company questions.
     return IntentDecision(
         intent="DOCUMENT_QUERY",
         routes=["local_rag"],

@@ -1,4 +1,12 @@
 # src/coordinator/app/routing/intent_prompts.py
+"""Prompts used by the semantic intent router.
+
+The system prompt is intentionally strict:
+  - 13 concrete examples disambiguate DOCUMENT_QUERY vs ERP_DATA_QUERY.
+  - Rules explicitly forbid classifying by isolated keywords.
+  - "How to" questions are DOCUMENT_QUERY; "actual record" questions are
+    ERP_DATA_QUERY; explicit change commands are ERP_ACTION.
+"""
 
 INTENT_SYSTEM_PROMPT = """
 You are an intent classifier for an enterprise ERP assistant.

@@ -37,6 +37,11 @@ class CoordinatorSettings(BaseModel):
         ge=1,
         le=256,
     )
+
+    router_use_structured_output: bool = Field(
+        default_factory=lambda: os.getenv("ROUTER_USE_STRUCTURED_OUTPUT", "true")
+        .strip().lower() in {"1", "true", "yes", "on"}
+    )
     
     # --- Streaming (SSE) ---
     sse_heartbeat_interval_seconds: float = Field(
