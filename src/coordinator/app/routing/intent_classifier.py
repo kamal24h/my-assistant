@@ -1,5 +1,4 @@
 # src/coordinator/app/routing/intent_classifier.py
-
 # Hybrid Semantic Router
 # 1. Rule-based برای موارد قطعی و ساده.
 # 2. Local Qwen برای تشخیص معنایی Intent.
@@ -10,10 +9,8 @@
 # 7. Multi-route Workflow برای درخواست‌های ترکیبی.
 
 from __future__ import annotations
-
 import logging
 from typing import Any
-
 from .intent_prompts import INTENT_SYSTEM_PROMPT
 from .intent_schemas import IntentDecision
 from .keyword_fallback import keyword_fallback
