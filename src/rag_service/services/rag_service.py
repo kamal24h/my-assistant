@@ -94,7 +94,7 @@ def generate_rag_response(
     terminology_context: str = "",
     terminology_search_terms: Optional[List[str]] = None,
 ) -> Tuple[str, List[Dict[str, Any]], Optional[int]]:
-    """تولید پاسخ RAG با محدودسازی نتایج به app_id و نسخه‌های جاری.
+    """تولید پاسخ RAG با محدودسازی نتایج به app_id(s) و نسخه‌های جاری.
 
     Pipeline:
         1. retrieval اولیه با k_docs
@@ -107,7 +107,6 @@ def generate_rag_response(
     if is_small_talk(question):
         logger.info("Skipping RAG for small talk: %r", question[:50])
         from services.llm_router import answer_rag_external_first_sync
-        # For small talk we don't have context; use a simple prompt.
         try:
             answer, _source = answer_rag_external_first_sync(
                 question=question,
@@ -172,7 +171,7 @@ def generate_rag_response(
         retrieval_query = f"{question}\nاصطلاحات و عبارت‌های مرتبط: {' ؛ '.join(search_terms[:30])}"
 
     scored_docs = vector_store.similarity_search_with_score(
-        retrieval_query,
+        question,
         k=k_docs,
         filter=query_filter,
     )
@@ -207,6 +206,7 @@ def generate_rag_response(
         "chunk_id", "chunk_hash", "page", "start_index", "is_current",
         "content_hash", "department",
     }
+    default_app_id = app_id or (app_ids[0] if app_ids else None)
 
     for rank, doc in enumerate(reranked_docs, start=1):
         md = dict(doc.metadata or {})
@@ -228,7 +228,7 @@ def generate_rag_response(
         source: Dict[str, Any] = {
             "doc_id": md.get("doc_id"),
             "doc_name": md.get("doc_name"),
-            "app_id": md.get("app_id", primary_app_id),
+            "app_id": md.get("app_id", default_app_id),
             "chunk_id": str(chunk_id),
             "chunk_hash": str(chunk_hash),
             "chunk_text": chunk_text,
@@ -247,8 +247,9 @@ def generate_rag_response(
         sources.append(source)
 
     logger.info(
-        "RAG final: %d docs (initial k=%d) for app_ids=%s, question=%r, glossary_matches=%d",
-        len(reranked_docs), k_docs, normalized_app_ids, question[:80], len(search_terms),
+        "RAG final: %d docs (initial k=%d) for app_id=%s app_ids=%s, question=%r",
+        len(reranked_docs), k_docs,
+        app_id, app_ids, question[:80],
     )
 
     context_text = "\n\n".join(context_parts)
@@ -265,7 +266,6 @@ def generate_rag_response(
         )
     except Exception:
         logger.exception("RAG answer failed (external+local); using local-only")
-        # Pure local fallback
         history_messages = []
         if chat_history:
             for role, text in chat_history:
