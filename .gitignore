@@ -221,3 +221,5 @@ __marimo__/
 docs/no-publish
 docs/cfg
 
+PATCH_NOTES.md
+docs/next-agents.md
