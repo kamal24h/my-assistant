@@ -72,6 +72,12 @@ SYSTEM_PROMPT = """
 
 اگر بین ارائه پاسخ احتمالی و اعلام نبود شواهد مردد هستی، اعلام نبود شواهد را انتخاب کن. صحت و قابلیت ردیابی بر کامل‌بودن یا روان‌بودن اولویت دارد.
 
+## اصطلاحات سازمانی مرتبط
+
+{terminology_context}
+
+این اصطلاحات فقط برای درک بهتر واژگان هستند؛ منبع حقیقت نیستند و نباید جایگزین محتوای اسناد شوند.
+
 ## Context اسناد مرتبط
 
 {context}
@@ -80,45 +86,58 @@ SYSTEM_PROMPT = """
 
 def generate_rag_response(
     question: str,
-    app_ids: List[str],
+    app_id: Optional[str] = None,
+    app_ids: Optional[List[str]] = None,
     chat_history: Optional[List[Tuple[str, str]]] = None,
     k_docs: int = 15,
     final_k: int = 5,
+    terminology_context: str = "",
+    terminology_search_terms: Optional[List[str]] = None,
 ) -> Tuple[str, List[Dict[str, Any]], Optional[int]]:
-
     """تولید پاسخ RAG با محدودسازی نتایج به app_id و نسخه‌های جاری.
-    Pipeline:
-        1. retrieval اولیه با k_docs (پیش‌فرض 15)
-        2. rerank با CrossEncoder و کاهش به final_k (پیش‌فرض 5)
-        3. ساخت context از top final_k
-        4. LLM
 
-    در هر مرحله، اطلاعات بازیابی‌شده (شامل chunk_text و score اولیه Qdrant)
-    در meta_info.sources پیام دستیار قابل ردیابی است.
+    Pipeline:
+        1. retrieval اولیه با k_docs
+        2. rerank با CrossEncoder و کاهش به final_k
+        3. ساخت context از top final_k
+        4. LLM (external-first, local fallback)
     """
-    
-    # ۱. اگر small talk است، مستقیم به LLM برو (بدون RAG)
+    # ۱. Small talk
     from services.intent_classifier import is_small_talk
     if is_small_talk(question):
         logger.info("Skipping RAG for small talk: %r", question[:50])
-        llm = ChatOllama(
-            model=settings.llm_model,
-            base_url=settings.ollama_url,
-            temperature=0.2,
-            reasoning=False,
-            num_ctx=settings.llm_num_ctx,
-        )
-        # یک prompt ساده برای پاسخ محاوره‌ای (بدون context اسناد)
-        prompt = f"به فارسی طبیعی و کوتاه پاسخ بده. پیام کاربر: {question}"
-        answer = llm.invoke(prompt).content
-        return answer, [], None  # sources خالی، formId None
+        from services.llm_router import answer_rag_external_first_sync
+        # For small talk we don't have context; use a simple prompt.
+        try:
+            answer, _source = answer_rag_external_first_sync(
+                question=question,
+                system_prompt="به فارسی طبیعی و کوتاه پاسخ بده. پیام کاربر: {context}",
+                context=question,
+                chat_history=None,
+            )
+        except Exception:
+            # Pure local fallback
+            llm = ChatOllama(
+                model=settings.llm_model,
+                base_url=settings.ollama_url,
+                temperature=0.2,
+                reasoning=False,
+                num_ctx=settings.llm_num_ctx,
+            )
+            answer = llm.invoke(
+                f"به فارسی طبیعی و کوتاه پاسخ بده. پیام کاربر: {question}"
+            ).content
+        return answer, [], None
 
-    # ۲. نرمال‌سازی ورودی: هم رشته و هم لیست را بپذیر (defensive)
-    if isinstance(app_ids, str):
-        app_ids = [app_ids]
-    app_ids = [a.strip() for a in (app_ids or []) if a and a.strip()]
-    if not app_ids:
-        raise ValueError("حداقل یک appId برای جست‌وجوی RAG الزامی است.")
+    # ۲. اگر سؤال واقعی است، RAG را اجرا کن
+    normalized_app_ids = list(dict.fromkeys(
+        str(value).strip()
+        for value in (app_ids or ([app_id] if app_id else []))
+        if value and str(value).strip()
+    ))
+    if not normalized_app_ids:
+        raise ValueError("حداقل یک app_id برای جست‌وجوی RAG الزامی است.")
+    primary_app_id = normalized_app_ids[0]
 
     vector_store = QdrantVectorStore(
         client=client,
@@ -130,7 +149,11 @@ def generate_rag_response(
         must=[
             FieldCondition(
                 key="metadata.app_id",
-                match=MatchAny(any=app_ids),
+                match=(
+                    MatchValue(value=normalized_app_ids[0])
+                    if len(normalized_app_ids) == 1
+                    else MatchAny(any=normalized_app_ids)
+                ),
             ),
             FieldCondition(
                 key="metadata.is_current",
@@ -139,15 +162,21 @@ def generate_rag_response(
         ]
     )
 
-    # ۱. retrieval اولیه با k بزرگ‌تر
+    search_terms = list(dict.fromkeys(
+        term.strip() for term in (terminology_search_terms or [])
+        if term and term.strip()
+    ))
+    retrieval_query = question
+    if search_terms:
+        # Keep the original user question intact for reranking and audit.
+        retrieval_query = f"{question}\nاصطلاحات و عبارت‌های مرتبط: {' ؛ '.join(search_terms[:30])}"
+
     scored_docs = vector_store.similarity_search_with_score(
-        question,
+        retrieval_query,
         k=k_docs,
         filter=query_filter,
     )
 
-    # ۲. نگه‌داشتن score اولیه Qdrant برای هر chunk بر اساس شناسه
-    # تا بعد از rerank هم بتوانیم score اصلی را در sources نشان دهیم.
     score_by_chunk_id: Dict[str, float] = {}
     raw_docs: List[Any] = []
     for doc, raw_score in scored_docs:
@@ -163,19 +192,14 @@ def generate_rag_response(
         )
         raw_docs.append(doc)
 
-    # ۳. rerank با سرویس مستقل (fallback داخلی دارد)
     reranked_docs = rerank_documents(
         question=question,
         docs=raw_docs,
         logger_override=logger,
     )
-
-    # اگر reranker در دسترس نبود یا خطا داد، برای جلوگیری از ارسال ۱۵ سند
-    # به LLM، به final_k کاهش می‌دهیم.
     if len(reranked_docs) > final_k:
         reranked_docs = reranked_docs[:final_k]
 
-    # ۴. ساخت sources و context از اسناد rerank‌شده
     sources: List[Dict[str, Any]] = []
     context_parts: List[str] = []
     core_keys = {
@@ -195,8 +219,6 @@ def generate_rag_response(
             or md.get("chunk_id")
             or chunk_hash
         )
-
-        # score اولیه Qdrant را از نگاشت پیدا می‌کنیم
         qdrant_score = score_by_chunk_id.get(str(chunk_id))
 
         context_parts.append(chunk_text)
@@ -206,7 +228,7 @@ def generate_rag_response(
         source: Dict[str, Any] = {
             "doc_id": md.get("doc_id"),
             "doc_name": md.get("doc_name"),
-            "app_id": md.get("app_id"),
+            "app_id": md.get("app_id", primary_app_id),
             "chunk_id": str(chunk_id),
             "chunk_hash": str(chunk_hash),
             "chunk_text": chunk_text,
@@ -225,41 +247,53 @@ def generate_rag_response(
         sources.append(source)
 
     logger.info(
-        "RAG final: %d docs (initial k=%d) for app_ids=%s, question=%r",
-        len(reranked_docs), k_docs, app_ids, question[:80],
+        "RAG final: %d docs (initial k=%d) for app_ids=%s, question=%r, glossary_matches=%d",
+        len(reranked_docs), k_docs, normalized_app_ids, question[:80], len(search_terms),
     )
 
     context_text = "\n\n".join(context_parts)
 
-    history_messages = []
-    if chat_history:
-        for role, text in chat_history:
-            if role == "user":
-                history_messages.append(HumanMessage(content=text))
-            elif role == "assistant":
-                history_messages.append(AIMessage(content=text))
-
-    prompt_template = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_PROMPT),
-        MessagesPlaceholder(variable_name="chat_history"),
-        ("human", "{question}"),
-    ])
-
-    llm = ChatOllama(
-        model=settings.llm_model,
-        base_url=settings.ollama_url,
-        temperature=settings.llm_temperature,
-        reasoning=False,
-        num_ctx=settings.llm_num_ctx,
-        repeat_penalty=1.1,      # برای جلوگیری از افتادن در حلقه تکرار عبارات
-        num_predict=1024,        # حداکثر توکن خروجی برای پاسخ
-    )
-    chain = prompt_template | llm | StrOutputParser()
-    answer = chain.invoke({
-        "context": context_text,
-        "chat_history": history_messages,
-        "question": question,
-    })
+    # ۳. LLM: external-first, local fallback
+    from services.llm_router import answer_rag_external_first_sync
+    try:
+        answer, _source = answer_rag_external_first_sync(
+            question=question,
+            system_prompt=SYSTEM_PROMPT,
+            context=context_text,
+            chat_history=chat_history,
+            terminology_context=terminology_context,
+        )
+    except Exception:
+        logger.exception("RAG answer failed (external+local); using local-only")
+        # Pure local fallback
+        history_messages = []
+        if chat_history:
+            for role, text in chat_history:
+                if role == "user":
+                    history_messages.append(HumanMessage(content=text))
+                elif role == "assistant":
+                    history_messages.append(AIMessage(content=text))
+        prompt_template = ChatPromptTemplate.from_messages([
+            ("system", SYSTEM_PROMPT),
+            MessagesPlaceholder(variable_name="chat_history"),
+            ("human", "{question}"),
+        ])
+        llm = ChatOllama(
+            model=settings.llm_model,
+            base_url=settings.ollama_url,
+            temperature=settings.llm_temperature,
+            reasoning=False,
+            num_ctx=settings.llm_num_ctx,
+            repeat_penalty=1.1,
+            num_predict=1024,
+        )
+        chain = prompt_template | llm | StrOutputParser()
+        answer = chain.invoke({
+            "context": context_text,
+            "terminology_context": terminology_context or "(هیچ اصطلاحی از واژه‌نامه تطبیق داده نشد)",
+            "chat_history": history_messages,
+            "question": question,
+        })
 
     from services.form_resolver import resolve_form_id
     form_id = resolve_form_id(

@@ -83,6 +83,8 @@ def send_message(
             question=req.prompt,
             app_ids=app_ids,
             chat_history=history,
+            terminology_context=req.terminologyContext,
+            terminology_search_terms=req.terminologySearchTerms,
         )
         answer, _guardrail_flags = guard_output(answer)
         duration = time.perf_counter() - started_at

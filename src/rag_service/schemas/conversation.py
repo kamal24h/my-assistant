@@ -85,6 +85,9 @@ class SendMessageRequest(BaseModel):
     prompt: str = Field(..., min_length=1)
     tenantId: Optional[str] = None
     userId: Optional[str] = None
+    # Internal Coordinator metadata; never persisted as the user's prompt.
+    terminologyContext: str = Field(default="", max_length=12000)
+    terminologySearchTerms: List[str] = Field(default_factory=list, max_length=100)
 
 
 class MessageLikeRequest(BaseModel):

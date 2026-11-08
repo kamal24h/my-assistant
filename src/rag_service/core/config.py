@@ -48,6 +48,18 @@ class Settings(BaseSettings):
     redis_password: Optional[str] = None
     redis_ttl_seconds: int = 86400
 
+    # --- OpenAI (external LLM) ---
+    openai_enabled: bool = os.getenv("OPENAI_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+    openai_timeout_seconds: float = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "25"))
+    openai_max_retries: int = int(os.getenv("OPENAI_MAX_RETRIES", "1"))
+    openai_max_tokens: int = int(os.getenv("OPENAI_MAX_TOKENS", "800"))
+    openai_temperature: float = float(os.getenv("OPENAI_TEMPERATURE", "0.2"))
+    openai_max_input_chars: int = int(os.getenv("OPENAI_MAX_INPUT_CHARS", "12000"))
+    openai_max_concurrency: int = int(os.getenv("OPENAI_MAX_CONCURRENCY", "4"))
+    openai_max_requests_per_minute: int = int(os.getenv("OPENAI_MAX_REQUESTS_PER_MINUTE", "30"))
+    
     # تنظیمات تاریخچه مکالمه
     chat_history_max_turns: int = 3
 

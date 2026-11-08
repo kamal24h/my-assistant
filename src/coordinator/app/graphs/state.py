@@ -20,6 +20,9 @@ class GraphState(TypedDict, total=False):
 
     # Routing (populated by intent_classifier_node)
     intent_decision: IntentDecision
+    terminology_context: str
+    terminology_search_terms: list[str]
+    terminology_normalized_prompt: str
 
     # Output
     answer: str

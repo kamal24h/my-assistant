@@ -32,6 +32,21 @@ class CoordinatorSettings(BaseModel):
         gt=0,
         le=300,
     )
+    # --- Organization terminology / glossary ---
+    terminology_file: str = Field(
+        default_factory=lambda: os.getenv(
+            "TERMINOLOGY_FILE", "/app/app/terminology/data/terms.json"
+        )
+    )
+    terminology_max_matches: int = Field(
+        default_factory=lambda: int(os.getenv("TERMINOLOGY_MAX_MATCHES", "12")),
+        ge=1, le=50,
+    )
+    terminology_max_context_chars: int = Field(
+        default_factory=lambda: int(os.getenv("TERMINOLOGY_MAX_CONTEXT_CHARS", "3000")),
+        ge=256, le=12000,
+    )
+
     router_num_predict: int = Field(
         default_factory=lambda: int(os.getenv("ROUTER_NUM_PREDICT", "32")),
         ge=1,

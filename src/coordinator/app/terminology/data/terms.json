@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "terms": [
+    {
+      "term_id": "sample_purchase_request",
+      "canonical": "درخواست خرید",
+      "aliases": ["تقاضای خرید", "درخواست تامین کالا", "درخواست تأمین کالا"],
+      "definition": "نمونه اصطلاح برای درخواست تأمین کالا یا خدمت؛ تعریف نهایی باید توسط مالک فرایند ERP تأیید شود.",
+      "domain": "procurement",
+      "app_ids": [],
+      "entity_type": "business_document",
+      "related_terms": ["سفارش خرید", "تأمین‌کننده", "درخواست تأمین"],
+      "search_terms": ["تقاضای خرید", "درخواست تأمین کالا"],
+      "intent_hints": ["ثبت درخواست خرید", "مشاهده وضعیت درخواست خرید", "پیگیری درخواست خرید"],
+      "form_id": null,
+      "status": "active",
+      "priority": 20
+    },
+    {
+      "term_id": "sample_goods_receipt",
+      "canonical": "رسید انبار",
+      "aliases": ["رسید کالا", "رسید ورود کالا", "رسید دریافت کالا"],
+      "definition": "نمونه اصطلاح برای ثبت ورود کالا به انبار؛ تعریف نهایی باید با فرایند واقعی سازمان تطبیق داده شود.",
+      "domain": "inventory",
+      "app_ids": [],
+      "entity_type": "inventory_document",
+      "related_terms": ["ورود کالا", "حواله انبار", "کاردکس کالا"],
+      "search_terms": ["رسید کالا", "ورود کالا به انبار"],
+      "intent_hints": ["راهنمای ثبت رسید انبار", "مشاهده رسیدهای انبار"],
+      "form_id": null,
+      "status": "active",
+      "priority": 20
+    }
+  ]
+}
