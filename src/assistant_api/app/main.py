@@ -405,7 +405,7 @@ async def chat_stream(
 
 @app.post(
     "/api/v1/conversations",
-    response_model=ConversationOut,
+    # response_model=ConversationOut,
     tags=["Conversations"],
     summary="Create conversation (legacy, forwarded to RAG)",
     description="Legacy endpoint. In the new flow, conversations are created automatically on the first chat. Preserved for backward compatibility.",
@@ -424,7 +424,7 @@ async def create_conversation(
 
 @app.get(
     "/api/v1/conversations",
-    response_model=list[ConversationOut],
+    # response_model=list[ConversationOut],
     tags=["Conversations"],
 )
 async def list_conversations(
@@ -450,7 +450,7 @@ async def list_conversations(
 
 @app.get(
     "/api/v1/conversations/{conversation_id}",
-    response_model=ConversationDetailOut,
+    # response_model=ConversationDetailOut,
     tags=["Conversations"],
 )
 async def get_conversation(
@@ -474,7 +474,7 @@ async def get_conversation(
 
 @app.patch(
     "/api/v1/conversations/{conversation_id}",
-    response_model=ConversationOut,
+    # response_model=ConversationOut,
     tags=["Conversations"],
 )
 async def update_conversation(

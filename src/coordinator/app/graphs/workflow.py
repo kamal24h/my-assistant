@@ -86,6 +86,24 @@ class RagApiError(Exception):
 
 
 # ============================================================
+# Helper: selected route from intent decision
+# ============================================================
+
+def _resolve_selected_route(decision: IntentDecision | None, fallback: str) -> str:
+    """Return the final route name (local_llm / local_rag / ...) for `selectedPath`.
+
+    `IntentDecision.intent` is an intent name (SMALL_TALK, DOCUMENT_QUERY, ...),
+    while `selectedPath` in ChatResponse / SSE is expected to be a route name
+    (local_llm, local_rag, local_mcp, erp_write, planning). `normalized_routes()`
+    returns the correct route(s); we pick the first one.
+    """
+    if decision is None:
+        return fallback
+    routes = decision.normalized_routes()
+    return routes[0] if routes else fallback
+
+
+# ============================================================
 # LLM helpers (answer generation, NOT routing)
 # ============================================================
 
@@ -109,7 +127,7 @@ async def _stream_local_llm(question: str):
 
 
 # ============================================================
-# RAG helpers (unchanged from prior version)
+# RAG helpers
 # ============================================================
 
 def _rag_headers() -> dict[str, str]:
@@ -731,7 +749,7 @@ def build_graph():
 
 app = FastAPI(
     title="ERP Assistant Coordinator",
-    version="1.1.0",
+    version="1.1.1",
     description=(
         "Phase 11: semantic intent router (structured output + confidence) "
         "with keyword fallback, clarification, planning (RAG+MCP), SSE, "
@@ -740,7 +758,7 @@ app = FastAPI(
 )
 
 
-# ---------- Health (unchanged) ----------
+# ---------- Health ----------
 
 @app.get("/health", tags=["Health"])
 async def health():
@@ -830,7 +848,7 @@ async def mcp_health():
     return {"status": "healthy", "provider": "erp_mcp", "baseUrl": settings.erp_mcp_url}
 
 
-# ---------- Conversation proxies (unchanged) ----------
+# ---------- Conversation proxies ----------
 
 async def _rag_proxy_request(
     method: str, path: str,
@@ -928,7 +946,7 @@ async def proxy_message_liked(conversation_id: UUID, message_id: UUID, body: dic
     )
 
 
-# ---------- Clarification pre-run (resume + rule-based) ----------
+# ---------- Clarification pre-run ----------
 
 async def _evaluate_clarification_before_run(
     req: ChatRequest,
@@ -1048,6 +1066,8 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
 
     # Graph may have requested clarification (via clarification_node).
     decision = result.get("intent_decision")
+
+    # Clarification requested by the graph.
     if decision is not None and decision.needs_clarification:
         question = decision.clarification_question or "لطفاً درخواست خود را دقیق‌تر توضیح دهید."
         missing = result.get("clarification_missing_fields") or []
@@ -1077,7 +1097,7 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
                 messageId=None,
                 status="needs_clarification",
                 answer=question,
-                selectedPath=decision.intent,
+                selectedPath=_resolve_selected_route(decision, "clarification"),
                 clarification=ClarificationRequest(
                     question=question,
                     missingFields=list(missing),
@@ -1092,7 +1112,7 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
         messageId=result.get("message_id"),
         status=result.get("status", "completed"),
         answer=result.get("answer"),
-        selectedPath=decision.intent if decision else pre_selected,
+        selectedPath=_resolve_selected_route(decision, pre_selected),
         sources=result.get("sources", []),
         approvalId=result.get("approval_id"),
         approvalExpiresAt=result.get("approval_expires_at"),
@@ -1159,11 +1179,12 @@ async def _stream_chat(req: ChatRequest, authorization: str | None, request: Req
             "request": req_effective, "authorization": authorization,
         })
         decision = result.get("intent_decision")
-        selected = decision.intent if decision else selected
 
+        # Clarification requested by the graph.
         if decision is not None and decision.needs_clarification:
             question = decision.clarification_question or "لطفاً درخواست خود را دقیق‌تر توضیح دهید."
             missing = result.get("clarification_missing_fields") or []
+            selected_route = _resolve_selected_route(decision, "clarification")
             if conversation_id is not None:
                 clarification_id = uuid4()
                 await _save_pending_clarification(
@@ -1178,17 +1199,18 @@ async def _stream_chat(req: ChatRequest, authorization: str | None, request: Req
                     "clarificationId": str(clarification_id),
                     "question": question,
                     "missingFields": list(missing),
-                    "intent": decision.intent,
+                    "intent": selected_route,
                 })
             yield _sse_event("done", {
                 "requestId": str(req.requestId),
                 "conversationId": str(conversation_id) if conversation_id else None,
-                "selectedPath": decision.intent,
+                "selectedPath": selected_route,
                 "status": "needs_clarification",
                 "answer": question,
             })
             return
 
+        selected = _resolve_selected_route(decision, selected)
         full_answer = result.get("answer") or ""
         sources = result.get("sources") or []
         conversation_id = result.get("conversation_id") or conversation_id
@@ -1245,7 +1267,7 @@ async def chat_stream(
     )
 
 
-# ---------- Approval endpoints (unchanged) ----------
+# ---------- Approval endpoints ----------
 
 def _require_approval_api_key(x_api_key: str | None) -> None:
     if not settings.approval_api_key:

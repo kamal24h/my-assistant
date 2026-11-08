@@ -14,6 +14,8 @@ redis_pool = redis.ConnectionPool(
     port=settings.redis_port,
     password=settings.redis_password,
     decode_responses=True,
+    protocol=2,
+    health_check_interval=0,
 )
 
 
