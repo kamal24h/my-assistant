@@ -28,6 +28,7 @@ class AssistantTurnRequest(BaseModel):
     selectedPath: str = Field(min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
     sources: list[dict[str, Any]] = Field(default_factory=list)
     duration: float = Field(ge=0)
+    answerSource: str | None = Field(default=None, max_length=50) 
 
 @router.post("/assistant-turn",
              response_model=MessageOut,
@@ -42,5 +43,5 @@ def save_assistant_turn(conv_id: uuid.UUID, req: AssistantTurnRequest, db: Sessi
     turn = ConversationService.add_query(db=db, conversation_id=conv_id, query=req.prompt)
     return ConversationService.complete_turn(
         db=db, message_id=turn.id, answer=req.answer, duration=req.duration,
-        error=None, meta_info={"status": "completed", "selectedPath": req.selectedPath, "sources": req.sources},
+        error=None, meta_info={"status": "completed", "selectedPath": req.selectedPath, "sources": req.sources, "answerSource": req.answerSource, },
     )

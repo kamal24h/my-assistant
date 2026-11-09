@@ -10,7 +10,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http.models import Filter, FieldCondition, MatchValue, MatchAny
 
 from core.config import settings
-from services.reranker_service import rerank_documents  # ← Reranker از سرویس مستقل
+from services.reranker_service import rerank_documents
 
 import hashlib
 import logging
@@ -26,8 +26,6 @@ embeddings = OllamaEmbeddings(
     model=settings.embedding_model,
     base_url=settings.ollama_url,
 )
-
-# System Prompt — پاسخ‌گویی مبتنی بر مستندات معتبر
 
 SYSTEM_PROMPT = """
 ## نقش
@@ -93,7 +91,7 @@ def generate_rag_response(
     final_k: int = 5,
     terminology_context: str = "",
     terminology_search_terms: Optional[List[str]] = None,
-) -> Tuple[str, List[Dict[str, Any]], Optional[int]]:
+) -> Tuple[str, List[Dict[str, Any]], Optional[int], str]:
     """تولید پاسخ RAG با محدودسازی نتایج به app_id(s) و نسخه‌های جاری.
 
     Pipeline:
@@ -101,14 +99,19 @@ def generate_rag_response(
         2. rerank با CrossEncoder و کاهش به final_k
         3. ساخت context از top final_k
         4. LLM (external-first, local fallback)
+    
+    Returns:
+        (answer, sources, form_id, answer_source)
+        answer_source ∈ {"external", "local", "external_failed_local", "small_talk"}
     """
     # ۱. Small talk
     from services.intent_classifier import is_small_talk
     if is_small_talk(question):
         logger.info("Skipping RAG for small talk: %r", question[:50])
         from services.llm_router import answer_rag_external_first_sync
+        answer_source = "local"  # default
         try:
-            answer, _source = answer_rag_external_first_sync(
+            answer, answer_source = answer_rag_external_first_sync(
                 question=question,
                 system_prompt="به فارسی طبیعی و کوتاه پاسخ بده. پیام کاربر: {context}",
                 context=question,
@@ -126,9 +129,10 @@ def generate_rag_response(
             answer = llm.invoke(
                 f"به فارسی طبیعی و کوتاه پاسخ بده. پیام کاربر: {question}"
             ).content
-        return answer, [], None
+            answer_source = "local_fallback"
+        return answer, [], None, answer_source
 
-    # ۲. اگر سؤال واقعی است، RAG را اجرا کن
+    # ۲. RAG retrieval
     normalized_app_ids = list(dict.fromkeys(
         str(value).strip()
         for value in (app_ids or ([app_id] if app_id else []))
@@ -206,7 +210,7 @@ def generate_rag_response(
         "chunk_id", "chunk_hash", "page", "start_index", "is_current",
         "content_hash", "department",
     }
-    default_app_id = app_id or (app_ids[0] if app_ids else None)
+    default_app_id = primary_app_id
 
     for rank, doc in enumerate(reranked_docs, start=1):
         md = dict(doc.metadata or {})
@@ -255,9 +259,10 @@ def generate_rag_response(
     context_text = "\n\n".join(context_parts)
 
     # ۳. LLM: external-first, local fallback
+    answer_source = "local"
     from services.llm_router import answer_rag_external_first_sync
     try:
-        answer, _source = answer_rag_external_first_sync(
+        answer, answer_source = answer_rag_external_first_sync(
             question=question,
             system_prompt=SYSTEM_PROMPT,
             context=context_text,
@@ -294,9 +299,10 @@ def generate_rag_response(
             "chat_history": history_messages,
             "question": question,
         })
+        answer_source = "local_fallback"
 
     from services.form_resolver import resolve_form_id
     form_id = resolve_form_id(
         question=question, answer=answer, use_llm_fallback=True
     )
-    return answer, sources, form_id
+    return answer, sources, form_id, answer_source

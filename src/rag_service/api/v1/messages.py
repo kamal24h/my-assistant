@@ -79,7 +79,7 @@ def send_message(
                 status_code=400,
                 detail="این مکالمه appId معتبری ندارد.",
             )
-        answer, sources, form_id = generate_rag_response(
+        answer, sources, form_id, answer_source = generate_rag_response(
             question=req.prompt,
             app_ids=app_ids,
             chat_history=history,
@@ -100,6 +100,7 @@ def send_message(
                 "status": "completed",
                 "formId": form_id,
                 "searchedAppIds": app_ids,      # ← برای ردیابی
+                "answerSource": answer_source,  # ← جدید
             },
         )
         return completed
@@ -114,7 +115,7 @@ def send_message(
             answer="متأسفانه در تولید پاسخ مشکلی رخ داد.",
             duration=duration,
             error=error_text,
-            meta_info={"status": "failed"},
+            meta_info={"status": "failed", "answerSource": "error"},
         )
         raise HTTPException(
             status_code=500,

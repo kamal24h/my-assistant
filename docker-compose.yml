@@ -124,6 +124,7 @@ services:
     - OPENAI_MAX_CONCURRENCY=${OPENAI_MAX_CONCURRENCY:-4}
     - OPENAI_MAX_REQUESTS_PER_MINUTE=${OPENAI_MAX_REQUESTS_PER_MINUTE:-30}
     - LLM_POLICY__RAG_ANSWER=${LLM_POLICY__RAG_ANSWER:-external}
+    # - LLM_POLICY__RAG_ANSWER=${LLM_POLICY__RAG_ANSWER:-local}
     # NOTE: RAG_API_KEY removed — RAG is fully internal and has no auth.
     networks:
     - assistant_network
