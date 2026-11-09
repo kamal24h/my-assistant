@@ -38,16 +38,19 @@ def create_conversation(req: ConversationCreate, db: Session = Depends(get_db)):
 def list_conversations(
     tenantId: str = Query(...),
     userId: str = Query(...),
-    appId: Optional[str] = Query(None),
+    appIds: Optional[List[str]] = Query(None),   # ← جدید
+    appId: Optional[str] = Query(None),           # ← legacy
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db)
 ):
+    effective = appIds or ([appId] if appId else None)
     return ConversationService.list_conversations(
         db=db,
         tenant_id=tenantId,
         user_id=userId,
         app_id=appId,
+        app_ids=effective,
         limit=limit,
         offset=offset
     )

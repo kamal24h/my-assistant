@@ -141,8 +141,8 @@ async def _ensure_conversation(client: httpx.AsyncClient, req: ChatRequest) -> U
         return req.conversationId
     response = await client.post(
         f"{settings.rag_api_base_url.rstrip('/')}/api/v1/conversations",
-        json={"appId": req.appId, "tenantId": req.tenantId, "userId": req.userId,
-              "title": req.prompt[:120]},
+        json={"appIds": req.appIds, "appId": req.appIds[0], "tenantId": req.tenantId, "userId": req.userId,
+            "title": req.prompt[:120]},
         headers=_rag_headers(),
     )
     if response.is_error:
@@ -213,6 +213,7 @@ async def invoke_rag_api(
                     "prompt": req.prompt,
                     "tenantId": req.tenantId,
                     "userId": req.userId,
+                    "appIds": req.appIds,          # ← اختیاری (اگر RAG استفاده می‌کند)
                     "terminologyContext": terminology_context,
                     "terminologySearchTerms": terminology_search_terms or [],
                 },
@@ -619,7 +620,9 @@ def build_graph():
             "approvalId": str(approval_id),
             "requestId": str(req.requestId),
             "conversationId": str(conversation_id),
-            "appId": req.appId, "tenantId": req.tenantId, "userId": req.userId,
+            "appIds": req.appIds,                 # canonical
+            "appId": req.appIds[0],               # legacy (اولین)
+            "tenantId": req.tenantId, "userId": req.userId,
             "prompt": req.prompt,
             "reason": _extract_reason(req.prompt),
             "toolName": selected["name"], "arguments": selected["arguments"],
@@ -1484,7 +1487,7 @@ async def approve_erp_operation(
                 history_request = ChatRequest(
                     requestId=UUID(record["requestId"]),
                     conversationId=conversation_id,
-                    appId=record["appId"], tenantId=record["tenantId"],
+                    appIds=record.get("appIds") or [record.get("appId", "")],
                     userId=record["userId"],
                     prompt=f"نتیجه عملیات تأییدشده: {record['prompt']}",
                 )

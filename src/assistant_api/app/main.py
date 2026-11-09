@@ -13,6 +13,14 @@ Authentication:
   - End-user SSO token is forwarded as Authorization: Bearer for MCP/approval.
   - Service-to-service credentials (APPROVAL_API_KEY) are added by this
     gateway only when calling Coordinator approval endpoints.
+
+appId -> appIds migration (Option B, backward compatible):
+  - Input:  accepts both `appIds` (preferred) and legacy `appId`.
+            If only `appId` is provided it is promoted to `appIds=[appId]`.
+  - Output: `ConversationOut` exposes BOTH `app_ids` (canonical) and
+            `app_id` (first element, kept for legacy clients).
+  - Chat endpoints still use a single `appId` because the Coordinator's
+    ChatRequest contract has not migrated yet.
 """
 from __future__ import annotations
 
@@ -28,7 +36,9 @@ from fastapi import (
     FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile,
 )
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel, ConfigDict, Field, field_validator, model_validator,
+)
 
 COORDINATOR_URL = os.getenv("COORDINATOR_URL", "http://coordinator:8101").rstrip("/")
 RAG_API_URL = os.getenv("RAG_API_URL", "http://rag:8102").rstrip("/")
@@ -77,13 +87,51 @@ class ApprovalActionRequest(BaseModel):
 # ---------- Compat schemas (from previous version) ----------
 
 class ConversationCreate(BaseModel):
+    """Conversation creation payload.
+
+    Preferred field is `appIds: list[str]`.
+    Legacy `appId: str` is still accepted and promoted to `appIds=[appId]`.
+    """
+
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
-    appId: str
+
+    appIds: list[str] = Field(min_length=1, max_length=50)
     tenantId: str
     userId: str
     userName: Optional[str] = None
     tenantDesc: Optional[str] = None
     title: Optional[str] = None
+
+    @field_validator("appIds")
+    @classmethod
+    def _validate_app_ids(cls, value: list[str]) -> list[str]:
+        cleaned = [v.strip() for v in value if isinstance(v, str) and v.strip()]
+        if not cleaned:
+            raise ValueError("appIds must contain at least one non-empty id")
+        if len(set(cleaned)) != len(cleaned):
+            raise ValueError("appIds must not contain duplicates")
+        return cleaned
+
+    @model_validator(mode="before")
+    @classmethod
+    def _promote_legacy_app_id(cls, data: Any) -> Any:
+        """Backward compatibility: accept `appId` and map it to `appIds`.
+
+        - If `appIds` is already present, `appId` is dropped (extra=forbid).
+        - If only `appId` is present, it becomes `appIds=[appId]`.
+        - If neither is present, leave untouched so `appIds` validation fails
+          with a clear error.
+        """
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        if "appIds" not in data and "appId" in data:
+            legacy = data.get("appId")
+            if isinstance(legacy, str) and legacy.strip():
+                data["appIds"] = [legacy]
+        # `appId` is not a declared field (extra=forbid) — drop it after mapping.
+        data.pop("appId", None)
+        return data
 
 
 class ConversationUpdate(BaseModel):
@@ -93,9 +141,16 @@ class ConversationUpdate(BaseModel):
 
 
 class ConversationOut(BaseModel):
+    """Public conversation representation.
+
+    Exposes both `app_ids` (canonical) and `app_id` (first element) for
+    backward compatibility with clients reading the legacy field.
+    """
+
     model_config = ConfigDict(from_attributes=True)
     id: UUID
-    app_id: str
+    app_ids: list[str] = Field(default_factory=list)
+    app_id: Optional[str] = None
     tenant_id: str
     user_id: str
     user_name: Optional[str] = None
@@ -208,7 +263,7 @@ app = FastAPI(
         "Document management is forwarded directly to the RAG service. "
         "Legacy endpoints (POST /conversations, POST /messages) are preserved for compatibility."
     ),
-    version="1.3.0",
+    version="1.4.0",
     lifespan=lifespan,
 )
 
@@ -311,6 +366,46 @@ async def _rag_forward(
     return body
 
 
+def _normalize_conversation_out(body: Any) -> Any:
+    """Ensure both `app_ids` and `app_id` are present in a conversation payload.
+
+    Accepts dict or list of dicts. Non-dict payloads are returned unchanged so
+    FastAPI can produce a proper validation error if the upstream returned
+    something unexpected.
+    """
+    if isinstance(body, list):
+        return [_normalize_conversation_out(item) for item in body]
+    if not isinstance(body, dict):
+        return body
+
+    body = dict(body)
+
+    app_ids_raw = body.get("app_ids")
+    if app_ids_raw is None:
+        app_ids_raw = body.get("appIds")
+
+    legacy_app_id = body.get("app_id")
+    if legacy_app_id is None:
+        legacy_app_id = body.get("appId")
+
+    # Build canonical list
+    if isinstance(app_ids_raw, list):
+        app_ids = [v for v in app_ids_raw if isinstance(v, str) and v.strip()]
+    elif isinstance(app_ids_raw, str) and app_ids_raw.strip():
+        app_ids = [app_ids_raw]
+    elif isinstance(legacy_app_id, str) and legacy_app_id.strip():
+        app_ids = [legacy_app_id]
+    else:
+        app_ids = []
+
+    body["app_ids"] = app_ids
+    body["app_id"] = app_ids[0] if app_ids else None
+    # Remove alternate casing keys to keep the response surface consistent
+    body.pop("appIds", None)
+    body.pop("appId", None)
+    return body
+
+
 # ============================================================
 # Health
 # ============================================================
@@ -405,10 +500,14 @@ async def chat_stream(
 
 @app.post(
     "/api/v1/conversations",
-    # response_model=ConversationOut,
+    response_model=ConversationOut,
     tags=["Conversations"],
     summary="Create conversation (legacy, forwarded to RAG)",
-    description="Legacy endpoint. In the new flow, conversations are created automatically on the first chat. Preserved for backward compatibility.",
+    description=(
+        "Legacy endpoint. In the new flow, conversations are created automatically on the first chat. "
+        "Preserved for backward compatibility. "
+        "Accepts both `appIds: list[str]` (preferred) and legacy `appId: str`."
+    ),
 )
 async def create_conversation(
     payload: ConversationCreate,
@@ -416,41 +515,65 @@ async def create_conversation(
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
     _check_api_key(x_api_key)
-    return await _rag_forward(
+
+    # Send canonical `appIds` plus a legacy `appId` alias so that RAG services
+    # that have not yet migrated keep working.
+    body = payload.model_dump(exclude_none=True, by_alias=True)
+    if body.get("appIds"):
+        body.setdefault("appId", body["appIds"][0])
+
+    result = await _rag_forward(
         request, "POST", "/api/v1/conversations",
-        json_body=payload.model_dump(exclude_none=True, by_alias=True),
+        json_body=body,
     )
+    return _normalize_conversation_out(result)
 
 
 @app.get(
     "/api/v1/conversations",
-    # response_model=list[ConversationOut],
+    response_model=list[ConversationOut],
     tags=["Conversations"],
+    description=(
+        "List conversations. Filters by `appIds` (repeatable query param). "
+        "Legacy `appId` is also accepted and treated as a single-element list."
+    ),
 )
 async def list_conversations(
     request: Request,
     tenant_id: str = Query(alias="tenantId", min_length=1, max_length=100),
     user_id: str = Query(alias="userId", min_length=1, max_length=200),
+    app_ids: list[str] | None = Query(default=None, alias="appIds"),
     app_id: str | None = Query(default=None, alias="appId", max_length=100),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
     _check_api_key(x_api_key)
+
+    effective_app_ids: list[str] = []
+    if app_ids:
+        effective_app_ids = [v.strip() for v in app_ids if v and v.strip()]
+    elif app_id:
+        effective_app_ids = [app_id.strip()]
+
     params: dict[str, Any] = {
         "tenantId": tenant_id, "userId": user_id,
         "limit": limit, "offset": offset,
     }
-    if app_id:
-        params["appId"] = app_id
-    return await _coordinator_forward(
+    if effective_app_ids:
+        params["appIds"] = effective_app_ids
+        # Compatibility: also send the first id under the legacy key.
+        params["appId"] = effective_app_ids[0]
+
+    result = await _coordinator_forward(
         request, "GET", "/api/v1/conversations", params=params,
     )
+    return _normalize_conversation_out(result)
 
 
 @app.get(
     "/api/v1/conversations/{conversation_id}",
-    # response_model=ConversationDetailOut,
+    response_model=ConversationDetailOut,
     tags=["Conversations"],
 )
 async def get_conversation(
@@ -466,15 +589,16 @@ async def get_conversation(
         params["tenantId"] = tenant_id
     if user_id:
         params["userId"] = user_id
-    return await _coordinator_forward(
+    result = await _coordinator_forward(
         request, "GET", f"/api/v1/conversations/{conversation_id}",
         params=params or None,
     )
+    return _normalize_conversation_out(result)
 
 
 @app.patch(
     "/api/v1/conversations/{conversation_id}",
-    # response_model=ConversationOut,
+    response_model=ConversationOut,
     tags=["Conversations"],
 )
 async def update_conversation(
@@ -484,10 +608,11 @@ async def update_conversation(
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
     _check_api_key(x_api_key)
-    return await _coordinator_forward(
+    result = await _coordinator_forward(
         request, "PATCH", f"/api/v1/conversations/{conversation_id}",
         json_body=payload.model_dump(exclude_none=True, by_alias=True),
     )
+    return _normalize_conversation_out(result)
 
 
 @app.patch(
@@ -572,7 +697,20 @@ async def send_message_legacy(
         )
     except HTTPException:
         raise
-    chat_payload["appId"] = conv.get("app_id") or conv.get("appId") or ""
+
+    # Accept both migrated (`app_ids`/`appIds`) and legacy (`app_id`/`appId`) shapes.
+    conv_app_ids: list[str] = []
+    raw_ids = conv.get("app_ids") or conv.get("appIds")
+    if isinstance(raw_ids, list):
+        conv_app_ids = [v for v in raw_ids if isinstance(v, str) and v.strip()]
+    elif isinstance(raw_ids, str) and raw_ids.strip():
+        conv_app_ids = [raw_ids]
+    if not conv_app_ids:
+        single = conv.get("app_id") or conv.get("appId")
+        if isinstance(single, str) and single.strip():
+            conv_app_ids = [single]
+
+    chat_payload["appId"] = conv_app_ids[0] if conv_app_ids else ""
     if not chat_payload["tenantId"] and conv.get("tenant_id"):
         chat_payload["tenantId"] = conv["tenant_id"]
     if not chat_payload["userId"] and conv.get("user_id"):

@@ -102,9 +102,12 @@ class ConversationService:
             Conversation.tenant_id == tenant_id,
             Conversation.user_id == user_id,
         )
+        # if app_ids:
+        #     q = q.filter(or_(
+        #         [Conversation.app_ids.contains([aid]) for aid in app_ids],
+        #         Conversation.app_id.in_(app_ids),
+        #     ))        
         if app_id:
-            #q = q.filter(Conversation.app_id == app_id)
-
             q = q.filter(or_(
                 Conversation.app_ids.contains([app_id]),
                 Conversation.app_id == app_id,
