@@ -572,12 +572,12 @@ async def list_conversations(
 
 
 @app.get(
-    "/api/v1/conversations/{conversation_id}",
+    "/api/v1/conversations/{conv_id}",
     response_model=ConversationDetailOut,
     tags=["Conversations"],
 )
 async def get_conversation(
-    conversation_id: UUID,
+    conv_id: UUID,
     request: Request,
     tenant_id: str | None = Query(default=None, alias="tenantId", max_length=100),
     user_id: str | None = Query(default=None, alias="userId", max_length=200),
@@ -590,44 +590,44 @@ async def get_conversation(
     if user_id:
         params["userId"] = user_id
     result = await _coordinator_forward(
-        request, "GET", f"/api/v1/conversations/{conversation_id}",
+        request, "GET", f"/api/v1/conversations/{conv_id}",
         params=params or None,
     )
     return _normalize_conversation_out(result)
 
 
 @app.patch(
-    "/api/v1/conversations/{conversation_id}",
+    "/api/v1/conversations/{conv_id}",
     response_model=ConversationOut,
     tags=["Conversations"],
 )
 async def update_conversation(
-    conversation_id: UUID,
+    conv_id: UUID,
     payload: ConversationUpdate,
     request: Request,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
     _check_api_key(x_api_key)
     result = await _coordinator_forward(
-        request, "PATCH", f"/api/v1/conversations/{conversation_id}",
+        request, "PATCH", f"/api/v1/conversations/{conv_id}",
         json_body=payload.model_dump(exclude_none=True, by_alias=True),
     )
     return _normalize_conversation_out(result)
 
 
 @app.patch(
-    "/api/v1/conversations/{conversation_id}/feedback",
+    "/api/v1/conversations/{conv_id}/feedback",
     tags=["Conversations"],
 )
 async def conversation_feedback(
-    conversation_id: UUID,
+    conv_id: UUID,
     payload: ConversationFeedbackRequest,
     request: Request,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
     _check_api_key(x_api_key)
     return await _coordinator_forward(
-        request, "PATCH", f"/api/v1/conversations/{conversation_id}/feedback",
+        request, "PATCH", f"/api/v1/conversations/{conv_id}/feedback",
         json_body=payload.model_dump(exclude_none=True, by_alias=True),
     )
 
@@ -637,12 +637,12 @@ async def conversation_feedback(
 # ============================================================
 
 @app.get(
-    "/api/v1/conversations/{conversation_id}/messages",
+    "/api/v1/conversations/{conv_id}/messages",
     response_model=list[MessageOut],
     tags=["Messages"],
 )
 async def list_messages(
-    conversation_id: UUID,
+    conv_id: UUID,
     request: Request,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -650,13 +650,13 @@ async def list_messages(
 ):
     _check_api_key(x_api_key)
     return await _coordinator_forward(
-        request, "GET", f"/api/v1/conversations/{conversation_id}/messages",
+        request, "GET", f"/api/v1/conversations/{conv_id}/messages",
         params={"limit": limit, "offset": offset},
     )
 
 
 @app.post(
-    "/api/v1/conversations/{conversation_id}/messages",
+    "/api/v1/conversations/{conv_id}/messages",
     response_model=MessageOut,
     tags=["Messages"],
     summary="Send message (legacy alias for /assistant/chat)",
@@ -667,7 +667,7 @@ async def list_messages(
     ),
 )
 async def send_message_legacy(
-    conversation_id: UUID,
+    conv_id: UUID,
     payload: SendMessageRequest,
     request: Request,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
@@ -686,13 +686,13 @@ async def send_message_legacy(
         "tenantId": payload.tenantId or "",
         "userId": payload.userId or "",
         "prompt": payload.prompt,
-        "conversationId": str(conversation_id),
+        "conversationId": str(conv_id),
     }
 
     # Resolve appId from the existing conversation (needed by Coordinator's ChatRequest).
     try:
         conv = await _rag_forward(
-            request, "GET", f"/api/v1/conversations/{conversation_id}",
+            request, "GET", f"/api/v1/conversations/{conv_id}",
             params={"tenantId": payload.tenantId} if payload.tenantId else None,
         )
     except HTTPException:
@@ -730,7 +730,7 @@ async def send_message_legacy(
     )
 
     # Normalize ChatResponse -> MessageOut for legacy clients.
-    # Legacy MessageOut fields: id, conversation_id, query, answer, duration,
+    # Legacy MessageOut fields: id, conv_id, query, answer, duration,
     # error, meta_info, liked, created_at, role, content.
     message_id = chat_response.get("messageId") or chat_response.get("requestId")
     answer = chat_response.get("answer")
@@ -751,7 +751,7 @@ async def send_message_legacy(
 
     return {
         "id": message_id,
-        "conversation_id": chat_response.get("conversationId") or str(conversation_id),
+        "conversation_id": chat_response.get("conversationId") or str(conv_id),
         "query": payload.prompt,
         "answer": answer,
         "duration": None,
@@ -765,12 +765,12 @@ async def send_message_legacy(
 
 
 @app.patch(
-    "/api/v1/conversations/{conversation_id}/messages/{message_id}/liked",
+    "/api/v1/conversations/{conv_id}/messages/{message_id}/liked",
     response_model=MessageOut,
     tags=["Messages"],
 )
 async def message_liked(
-    conversation_id: UUID,
+    conv_id: UUID,
     message_id: UUID,
     payload: MessageLikeRequest,
     request: Request,
@@ -779,7 +779,7 @@ async def message_liked(
     _check_api_key(x_api_key)
     return await _coordinator_forward(
         request, "PATCH",
-        f"/api/v1/conversations/{conversation_id}/messages/{message_id}/liked",
+        f"/api/v1/conversations/{conv_id}/messages/{message_id}/liked",
         json_body=payload.model_dump(exclude_none=True, by_alias=True),
     )
 

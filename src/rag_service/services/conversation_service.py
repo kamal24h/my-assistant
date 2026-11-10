@@ -94,7 +94,7 @@ class ConversationService:
         db: Session,
         tenant_id: str,
         user_id: str,
-        app_id: Optional[str] = None,
+        app_id: Optional[str] = None,   # ← app_id تک
         limit: int = 20,
         offset: int = 0,
     ) -> List[Conversation]:
