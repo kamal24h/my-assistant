@@ -21,6 +21,12 @@ appId -> appIds migration (Option B, backward compatible):
             `app_id` (first element, kept for legacy clients).
   - Chat endpoints still use a single `appId` because the Coordinator's
     ChatRequest contract has not migrated yet.
+
+Linkify:
+  - `answer` fields are post-processed with `linkify_html` so that bare URLs
+    become clickable <a> tags for HTML-rendering clients. The transformation
+    is backward compatible (plain text is unchanged; existing <a> tags are
+    not double-wrapped).
 """
 from __future__ import annotations
 
@@ -39,6 +45,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import (
     BaseModel, ConfigDict, Field, field_validator, model_validator,
 )
+from app.linkify import linkify_html
 
 COORDINATOR_URL = os.getenv("COORDINATOR_URL", "http://coordinator:8101").rstrip("/")
 RAG_API_URL = os.getenv("RAG_API_URL", "http://rag:8102").rstrip("/")
@@ -263,7 +270,7 @@ app = FastAPI(
         "Document management is forwarded directly to the RAG service. "
         "Legacy endpoints (POST /conversations, POST /messages) are preserved for compatibility."
     ),
-    version="1.4.0",
+    version="1.4.1",
     lifespan=lifespan,
 )
 
@@ -404,6 +411,17 @@ def _normalize_conversation_out(body: Any) -> Any:
     body.pop("appIds", None)
     body.pop("appId", None)
     return body
+
+
+def _linkify_message(item: Any) -> Any:
+    """Apply `linkify_html` to `answer` (if present) in a message payload."""
+    if not isinstance(item, dict):
+        return item
+    answer = item.get("answer")
+    if isinstance(answer, str) and answer:
+        item = dict(item)
+        item["answer"] = linkify_html(answer)
+    return item
 
 
 # ============================================================
@@ -593,7 +611,11 @@ async def get_conversation(
         request, "GET", f"/api/v1/conversations/{conv_id}",
         params=params or None,
     )
-    return _normalize_conversation_out(result)
+    result = _normalize_conversation_out(result)
+    # Linkify messages inside the detail payload (if any).
+    if isinstance(result, dict) and isinstance(result.get("messages"), list):
+        result["messages"] = [_linkify_message(m) for m in result["messages"]]
+    return result
 
 
 @app.patch(
@@ -649,10 +671,13 @@ async def list_messages(
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
     _check_api_key(x_api_key)
-    return await _coordinator_forward(
+    result = await _coordinator_forward(
         request, "GET", f"/api/v1/conversations/{conv_id}/messages",
         params={"limit": limit, "offset": offset},
     )
+    if isinstance(result, list):
+        result = [_linkify_message(m) for m in result]
+    return result
 
 
 @app.post(
@@ -730,10 +755,12 @@ async def send_message_legacy(
     )
 
     # Normalize ChatResponse -> MessageOut for legacy clients.
-    # Legacy MessageOut fields: id, conv_id, query, answer, duration,
+    # Legacy MessageOut fields: id, conversation_id, query, answer, duration,
     # error, meta_info, liked, created_at, role, content.
     message_id = chat_response.get("messageId") or chat_response.get("requestId")
     answer = chat_response.get("answer")
+    if isinstance(answer, str) and answer:
+        answer = linkify_html(answer)
     selected = chat_response.get("selectedPath")
     sources = chat_response.get("sources") or []
     meta_info = {
@@ -777,11 +804,12 @@ async def message_liked(
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
     _check_api_key(x_api_key)
-    return await _coordinator_forward(
+    result = await _coordinator_forward(
         request, "PATCH",
         f"/api/v1/conversations/{conv_id}/messages/{message_id}/liked",
         json_body=payload.model_dump(exclude_none=True, by_alias=True),
     )
+    return _linkify_message(result)
 
 
 # ---------------------------------------------------------
@@ -1037,18 +1065,3 @@ async def delete_document(
     return await _rag_forward(
         request, "DELETE", f"/api/v1/documents/{document_id}",
     )
-# 01. imports
-# 02. env constants
-# 03. schemas (ChatRequest, ApprovalActionRequest)
-# 04. lifespan
-# 05. app = FastAPI(...)
-# 06. auth helpers (_check_api_key, _coordinator_headers)
-# 07. forward helpers (_coordinator_forward, _rag_forward)
-# 08. health()
-# 09. chat() non-stream
-# 10. SSE helper (_stream_coordinator)
-# 11. chat_stream()
-# 12. conversation proxies (6 endpoints)
-# 13. approval proxies (3 endpoints)
-# 14. document proxies (9 endpoints)
-

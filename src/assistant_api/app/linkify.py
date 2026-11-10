@@ -4,6 +4,12 @@
 Usage:
     from app.linkify import linkify_html
     answer = linkify_html(answer)
+
+Security:
+    The transformation only replaces bare URLs with <a> tags. It does not
+    interpret any other HTML. To avoid XSS when the client renders HTML,
+    the upstream text must be trusted (LLM output is not HTML) and this
+    function must not be applied to untrusted user-provided content.
 """
 from __future__ import annotations
 
@@ -31,11 +37,11 @@ def linkify_html(text: str) -> str:
         return text
     if not matches:
         return text
-    # Reverse to avoid index shifting
+    # Reverse to avoid index shifting.
     for match in reversed(matches):
         raw = match.raw
         url = match.url
-        # Skip if already inside an <a> tag (basic check)
+        # Skip if already inside an <a> tag (basic check).
         before = text[: match.index]
         if before.rfind("<a ") > before.rfind("</a>"):
             continue
