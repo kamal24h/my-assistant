@@ -67,7 +67,8 @@ def _is_small_talk(text: str) -> bool:
 _ID_PATTERNS = (
     re.compile(r"\b(?:SO|PO|INV|ORD|PR)-?\d{3,}\b", re.I),
     re.compile(r"\b\d{4,}\b"),
-    re.compile(r"[\w۰-۹0-9]{4,}"),
+    # حذف شد: `[\w۰-۹0-9]{4,}` خیلی گسترده بود و هر متن ۴+ کاراکتری (شامل
+    # کلمات فارسی مثل «سلام») را به عنوان identifier شناسایی می‌کرد.
 )
 _ENTITY_HINTS = (
     "سفارش", "فاکتور", "درخواست", "محصول", "کالا", "انبار", "مشتری",

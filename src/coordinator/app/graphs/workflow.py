@@ -472,7 +472,7 @@ def build_graph():
             )}
 
         resolution = get_terminology_resolver().resolve(
-            req.prompt, app_id=req.appId
+            req.prompt, app_id=req.app_id
         )
         decision = await intent_classifier.classify(
             resolution.normalized_text,
@@ -1030,23 +1030,20 @@ async def _evaluate_clarification_before_run(
     if blocked:
         return (req, "guardrails_blocked", {
             "clarificationId": None,
-            "question": "نمی‌توانم پیام‌های سیستمی داخلی، کلیدها یا اطلاعات احراز هویت محرمانه را افشا کنم. "
-                        "اگر به دسترسی نیاز دارید، از مسیر رسمی مدیریت دسترسی سازمان استفاده کنید.",
+            "question": "نمی‌توانم ...",
             "missingFields": [], "intent": "guardrails_blocked", "is_blocked": True,
         }, req.conversationId)
 
     if assessment and (assessment.injection_suspected or assessment.secret_request):
         return (req, "local_llm", None, req.conversationId)
 
-    # NOTE: The intent classifier is now invoked inside the graph.
-    # Here, only handle pre-run clarification if enabled and the
-    # rule-based helper says so (as before). This preserves the
-    # legacy API behavior and the streaming path.
     if settings.clarification_enabled:
-        # Use a lightweight keyword-based decision to avoid invoking the
-        # graph twice.
         from app.routing.keyword_fallback import keyword_fallback
         kw = keyword_fallback(req.prompt)
+        # Convert intent → route for `selectedPath`.
+        kw_routes = kw.normalized_routes()
+        kw_route = kw_routes[0] if kw_routes else "local_rag"
+
         need, missing, question = _needs_clarification(req.prompt, kw.intent)
         if need:
             resolved = req.conversationId
@@ -1056,23 +1053,23 @@ async def _evaluate_clarification_before_run(
                         resolved = await _ensure_conversation(client, req)
                 except RagApiError as exc:
                     logger.error("Pre-run clarification: conversation creation failed: %s", exc.code)
-                    return (req, kw.intent, None, None)
+                    return (req, kw_route, None, None)
                 req = req.model_copy(update={"conversationId": resolved})
 
             clarification_id = uuid4()
             await _save_pending_clarification(
                 conversation_id=resolved,
-                intent=kw.intent,
+                intent=kw_route,          # ← route
                 original_prompt=req.prompt,
                 missing_fields=missing,
                 question=question,
                 clarification_id=clarification_id,
             )
-            return (req, kw.intent, {
+            return (req, kw_route, {      # ← route
                 "clarificationId": str(clarification_id),
                 "question": question,
                 "missingFields": missing,
-                "intent": kw.intent,
+                "intent": kw_route,       # ← route
             }, resolved)
 
     return (req, "unknown", None, req.conversationId)
