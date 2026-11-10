@@ -57,7 +57,11 @@ def _needs_clarification(
     """
     text = prompt.strip()
 
-    # 1. Very short prompts.
+    # 1. Small talk first (BEFORE length check).
+    if intent == "SMALL_TALK" and _is_small_talk(text):
+        return (False, [], "")
+
+    # 2. Very short prompts.
     if len(text) < settings.clarification_min_prompt_chars:
         return (
             True,
@@ -65,10 +69,6 @@ def _needs_clarification(
             "سؤالتان کوتاه است. لطفاً دقیق‌تر بگویید چه اطلاعاتی نیاز دارید "
             "(مثلاً وضعیت سفارش، موجودی کالا، یا ثبت درخواست خرید).",
         )
-
-    # 2. Small talk is never asked to clarify.
-    if intent == "SMALL_TALK" and _is_small_talk(text):
-        return (False, [], "")
 
     # 3. ERP_ACTION without order_id / entity / reason.
     if intent == "ERP_ACTION":
