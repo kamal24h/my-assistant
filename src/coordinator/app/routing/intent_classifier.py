@@ -72,6 +72,21 @@ class IntentClassifier:
     # ---------------------------------------------------------
     # Public API
     # ---------------------------------------------------------
+    
+    def _apply_mcp_toggle(self, decision: IntentDecision) -> IntentDecision:
+        """اگر MCP غیرفعال است، intentهای وابسته به MCP را به RAG تبدیل کن."""
+        if settings.erp_mcp_enabled:
+            return decision
+        if decision.intent in ("ERP_DATA_QUERY", "ERP_ACTION", "MIXED_QUERY"):
+            return IntentDecision(
+                intent="DOCUMENT_QUERY",
+                routes=["local_rag"],
+                confidence=decision.confidence,
+                reasoning=f"erp_mcp_disabled (original={decision.intent})",
+                entities=decision.entities,
+                needs_clarification=False,
+            )
+        return decision
 
     async def classify(
         self,
@@ -82,34 +97,40 @@ class IntentClassifier:
     ) -> IntentDecision:
         question = (question or "").strip()
         if not question:
-            return keyword_fallback(question)
-
+            #return keyword_fallback(question)
+            return self._apply_mcp_toggle(keyword_fallback(question))
+        
         # 1. Hard keyword rules for sensitive intents.
         # Only MIXED_QUERY is always deterministic.
         # ERP_ACTION is deterministic ONLY when a concrete identifier is present
         # (e.g. "فاکتور ۱۲۳ را حذف کن"). A bare "ثبت کنم" (e.g. "می‌خواهم تیکت
         # ثبت کنم") must go to the LLM so it can be recognized as a how-to
         # question (DOCUMENT_QUERY) instead of an ambiguous ERP action.
+        
+        # مسیرهای deterministic (فقط وقتی MCP فعال است معنا دارند)
+        
         kw = keyword_fallback(question)
-        if kw.intent == "MIXED_QUERY":
-            return kw
-        if kw.intent == "ERP_ACTION" and _has_identifier(question):
-            return kw
+        if settings.erp_mcp_enabled:
+            if kw.intent == "MIXED_QUERY":
+                return kw
+            if kw.intent == "ERP_ACTION" and _has_identifier(question):
+                return kw
 
         # 2. Structured LLM.
         if self._structured_llm is None:
-            return kw
+            return self._apply_mcp_toggle(kw)
 
         try:
             llm_decision = await self._classify_with_llm(
                 question, conversation_context, terminology_context
             )
             if llm_decision is None:
-                return kw
-            return self._apply_confidence_policy(llm_decision, kw)
+                return self._apply_mcp_toggle(kw)
+            result = self._apply_confidence_policy(llm_decision, kw)
+            return self._apply_mcp_toggle(result)
         except Exception:
             logger.exception("LLM intent classification failed; using keyword fallback.")
-            return kw
+            return self._apply_mcp_toggle(kw)
 
     # ---------------------------------------------------------
     # LLM invocation
