@@ -11,6 +11,7 @@ from app.routing.intent_schemas import IntentName
 from app.routing.keyword_fallback import (
     _has_identifier,
     _has_entity_hint,
+    _is_howto_question,
     _is_small_talk,
 )
 
@@ -70,7 +71,12 @@ def _needs_clarification(
             "(مثلاً وضعیت سفارش، موجودی کالا، یا ثبت درخواست خرید).",
         )
 
-    # 3. ERP_ACTION without order_id / entity / reason.
+    # 3. How-to questions must go to RAG, never to clarification,
+    #    even if they contain a write verb like "ثبت کنم".
+    if settings.clarification_skip_howto_questions and _is_howto_question(text):
+        return (False, [], "")
+
+    # 4. ERP_ACTION without order_id / entity / reason.
     if intent == "ERP_ACTION":
         missing = []
         if not _has_identifier(text):
@@ -92,7 +98,7 @@ def _needs_clarification(
                 "برای انجام این عملیات در ERP، لطفاً مشخص کنید: " + "، ".join(pieces) + ".",
             )
 
-    # 4. ERP_DATA_QUERY without identifier / entity.
+    # 5. ERP_DATA_QUERY without identifier / entity.
     if intent == "ERP_DATA_QUERY":
         if not _has_identifier(text) and not _has_entity_hint(text):
             return (

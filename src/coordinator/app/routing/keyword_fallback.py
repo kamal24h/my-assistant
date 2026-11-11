@@ -4,8 +4,8 @@
 Used when structured LLM output is unavailable or throws. Precedence:
   1. Empty input -> AMBIGUOUS
   2. Small talk -> SMALL_TALK
-  3. Procedural wording -> DOCUMENT_QUERY
-  4. Explicit ERP write -> ERP_ACTION
+  3. Procedural/how-to wording -> DOCUMENT_QUERY
+  4. Explicit ERP write (with concrete object) -> ERP_ACTION
   5. Actual ERP data hints -> ERP_DATA_QUERY
   6. Default -> DOCUMENT_QUERY (preserves safe, RAG-first behavior)
 
@@ -63,6 +63,27 @@ def _is_small_talk(text: str) -> bool:
     )
 
 
+# ---------- How-to / procedural question detection ----------
+
+_HOWTO_HINTS = (
+    "می خواهم", "میخواهم", "می خوام", "میخوام", "می خواستم", "میخواستم",
+    "چگونه", "چطور", "چجوری", "نحوه", "روش", "مراحل", "مرحله",
+    "راهنما", "راهنمایی", "آموزش", "یاد بده", "یادم بده",
+    "چی کار کنم", "چه کار کنم", "چه کنم", "چیکار کنم",
+    "how to", "how do i", "guide", "steps",
+)
+
+
+def _is_howto_question(text: str) -> bool:
+    """Detect 'how to do X' questions.
+
+    These must go to RAG (documentation), not clarification, even when the
+    sentence contains an ERP write verb (e.g. 'می‌خواهم تیکت ثبت کنم').
+    """
+    lowered = _normalize_fa(text)
+    return any(hint in lowered for hint in _HOWTO_HINTS)
+
+
 # ---------- Entity / identifier helpers ----------
 _ID_PATTERNS = (
     re.compile(r"\b(?:SO|PO|INV|ORD|PR)-?\d{3,}\b", re.I),
@@ -86,21 +107,16 @@ def _has_entity_hint(text: str) -> bool:
 
 
 # ---------- Explicit write commands ----------
+# IMPORTANT: patterns must require a concrete object.
+# A bare "ثبت کنم" is ambiguous and must NOT be classified as ERP_ACTION.
 _WRITE_PATTERNS = (
-    r"ثبت\s+کن",
-    r"ایجاد\s+کن",
-    r"بساز",
-    r"ویرایش\s+کن",
-    r"به.?روزرسانی\s+کن",
-    r"حذف\s+کن",
-    r"پاک\s+کن",
-    r"ارسال\s+کن",
-    r"تایید\s+کن",
-    r"تأیید\s+کن",
-    r"رد\s+کن",
-    r"ابطال\s+کن",
-    r"لغو\s+کن",
-    r"اجرا\s+کن",
+    # "ثبت کن" با مفعول مشخص: "این فاکتور را ثبت کن"، "سفارش خرید ثبت کن"
+    r"(?:این|آن|همین)\s+\S+\s+را?\s*(?:ثبت|ایجاد|بساز|ویرایش|حذف|پاک|ارسال|تایید|تأیید|رد|ابطال|لغو)\s*کن",
+    r"(?:فاکتور|سفارش|درخواست|محصول|کالا)\s+\S+\s+را?\s*(?:ثبت|ایجاد|ویرایش|حذف|تایید|تأیید|ابطال|لغو)\s*کن",
+    # "ثبت کن برای ..." یا "ثبت کن با ..."
+    r"(?:ثبت|ایجاد|ویرایش|حذف|ارسال|تایید|تأیید|ابطال|لغو)\s+کن\s+(?:برا|برای|با|از)",
+    # "برای X ثبت کن"
+    r"برای\s+.+\s+(?:ثبت|ایجاد|ویرایش|حذف|ارسال|تایید|تأیید|ابطال|لغو)\s+کن",
 )
 
 
@@ -146,10 +162,11 @@ def keyword_fallback(question: str) -> IntentDecision:
     Precedence:
       1. empty -> AMBIGUOUS
       2. small talk -> SMALL_TALK
-      3. procedural wording -> DOCUMENT_QUERY
-      4. explicit write -> ERP_ACTION
-      5. actual ERP data hints -> ERP_DATA_QUERY
-      6. default -> DOCUMENT_QUERY
+      3. how-to questions -> DOCUMENT_QUERY (RAG)
+      4. procedural wording -> DOCUMENT_QUERY
+      5. explicit write with concrete object -> ERP_ACTION
+      6. actual ERP data hints -> ERP_DATA_QUERY
+      7. default -> DOCUMENT_QUERY
     """
     text = _normalize_fa(question)
 
@@ -171,6 +188,15 @@ def keyword_fallback(question: str) -> IntentDecision:
             reasoning="پیام از نوع گفت‌وگوی کوتاه است.",
         )
 
+    # How-to questions: always DOCUMENT_QUERY, even if they contain a write verb.
+    if _is_howto_question(text):
+        return IntentDecision(
+            intent="DOCUMENT_QUERY",
+            routes=["local_rag"],
+            confidence=0.90,
+            reasoning="پرسش از نوع «چگونه» یا «می‌خواهم ... کنم» است؛ مسیر مستندات.",
+        )
+
     # Documentation takes precedence over ERP entity names.
     if _match_any(text, _DOC_PATTERNS):
         return IntentDecision(
@@ -180,7 +206,11 @@ def keyword_fallback(question: str) -> IntentDecision:
             reasoning="پرسش درباره روش، مراحل یا دستورالعمل است.",
         )
 
-    if _match_any(text, _WRITE_PATTERNS):
+    # Explicit write action (requires a concrete object).
+    if _match_any(text, _WRITE_PATTERNS) or (
+        _match_any(text, (r"\b(?:ثبت|ایجاد|ویرایش|حذف|ارسال|تایید|تأیید|ابطال|لغو)\s+کن\b",))
+        and _has_identifier(text)
+    ):
         return IntentDecision(
             intent="ERP_ACTION",
             routes=["erp_write"],

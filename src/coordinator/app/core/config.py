@@ -67,6 +67,7 @@ class CoordinatorSettings(BaseModel):
         default_factory=lambda: float(os.getenv("SSE_STREAM_TIMEOUT_SECONDS", "300")),
         gt=0, le=3600,
     )
+    
     # --- Clarification (پرسش تکمیلی برای سؤال مبهم) ---
     clarification_ttl_seconds: int = Field(
         default_factory=lambda: int(os.getenv("CLARIFICATION_TTL_SECONDS", "600")),
@@ -95,6 +96,15 @@ class CoordinatorSettings(BaseModel):
         ge=0,
         le=10,
     )
+
+    # --- NEW: skip clarification for how-to questions ---
+    clarification_skip_howto_questions: bool = Field(
+        default_factory=lambda: os.getenv(
+            "CLARIFICATION_SKIP_HOWTO_QUESTIONS", "true"
+        ).strip().lower() in {"1", "true", "yes", "on"}
+    )
+
+    # --- openai APIs ---
     openai_enabled: bool = Field(
         default_factory=lambda: os.getenv("OPENAI_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
     )

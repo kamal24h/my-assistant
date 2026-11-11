@@ -2,8 +2,9 @@
 """Semantic intent classifier.
 
 Strategy (in order):
-  1. Hard keyword rules (ERP_ACTION, MIXED_QUERY are never overridden
-     because they affect approvals/planning and must be deterministic).
+  1. Hard keyword rules (MIXED_QUERY, and ERP_ACTION *with identifier*
+     are never overridden because they affect approvals/planning and
+     must be deterministic).
   2. Structured LLM classification (when available and enabled).
   3. Keyword fallback (when the LLM is unavailable or fails).
 
@@ -84,8 +85,15 @@ class IntentClassifier:
             return keyword_fallback(question)
 
         # 1. Hard keyword rules for sensitive intents.
+        # Only MIXED_QUERY is always deterministic.
+        # ERP_ACTION is deterministic ONLY when a concrete identifier is present
+        # (e.g. "فاکتور ۱۲۳ را حذف کن"). A bare "ثبت کنم" (e.g. "می‌خواهم تیکت
+        # ثبت کنم") must go to the LLM so it can be recognized as a how-to
+        # question (DOCUMENT_QUERY) instead of an ambiguous ERP action.
         kw = keyword_fallback(question)
-        if kw.intent in ("ERP_ACTION", "MIXED_QUERY"):
+        if kw.intent == "MIXED_QUERY":
+            return kw
+        if kw.intent == "ERP_ACTION" and _has_identifier(question):
             return kw
 
         # 2. Structured LLM.
@@ -189,23 +197,6 @@ class IntentClassifier:
 
         # Normalize routes against the whitelist.
         decision.routes = decision.normalized_routes()
-
-        # Extra safety: ERP_ACTION without an explicit identifier is ambiguous
-        # (prevents e.g. "فاکتور را حذف کن" from creating an approval without
-        # a concrete target).
-        if (
-            decision.intent == "ERP_ACTION"
-            and not _has_identifier(decision.entities.get("order_number", "") or "")
-            and not _has_identifier(decision.entities.get("invoice_number", "") or "")
-            and not any(
-                _has_identifier(str(v))
-                for v in decision.entities.values()
-                if v is not None
-            )
-        ):
-            # Let the clarification layer add "order_id/entity" questions.
-            pass
-
         return decision
 
     @staticmethod
