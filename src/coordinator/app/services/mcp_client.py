@@ -54,7 +54,7 @@ class ErpMcpClient:
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
-            "MCP-Protocol-Version": "2025-03-26",
+            "MCP-Protocol-Version": "2025-11-25",
         }
         if self.authorization:
             headers["Authorization"] = self.authorization
