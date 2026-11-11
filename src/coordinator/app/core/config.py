@@ -131,7 +131,10 @@ class CoordinatorSettings(BaseModel):
     openai_max_requests_per_minute: int = Field(
         default_factory=lambda: int(os.getenv("OPENAI_MAX_REQUESTS_PER_MINUTE", "30")), ge=1, le=600
     )
-
+    erp_mcp_enabled: bool = Field(
+        default_factory=lambda: os.getenv("ERP_MCP_ENABLED", "true").strip().lower()
+        in {"1", "true", "yes", "on"}
+    )
     erp_mcp_url: str = Field(
         default_factory=lambda: os.getenv("ERP_MCP_URL", "http://216.65.200.52:30001/mcp")
     )

@@ -491,7 +491,14 @@ def build_graph():
             return "local_rag"
         if decision.needs_clarification or decision.intent == "AMBIGUOUS":
             return "clarification"
+
         routes = decision.normalized_routes()
+
+        # اگر MCP غیرفعال است، مسیرهای وابسته به آن به RAG هدایت شوند
+        if not settings.erp_mcp_enabled:
+            if decision.intent in ("ERP_DATA_QUERY", "ERP_ACTION", "MIXED_QUERY"):
+                return "local_rag"
+
         if not routes:
             return "local_rag"
         if len(routes) > 1:
@@ -539,6 +546,8 @@ def build_graph():
         }
 
     async def local_mcp_node(state: GraphState) -> dict[str, Any]:
+        if not settings.erp_mcp_enabled:
+            raise McpClientError("erp_mcp_disabled")
         req = state["request"]
         started = time.perf_counter()
         client = ErpMcpClient(authorization=state.get("authorization"))
@@ -905,6 +914,8 @@ async def rag_health():
 @app.get("/health/mcp", tags=["Health"])
 async def mcp_health():
     client = ErpMcpClient()
+    if not settings.erp_mcp_enabled:
+        return {"status": "disabled", "provider": "erp_mcp"}
     if not await client.health():
         raise HTTPException(
             status_code=503,
