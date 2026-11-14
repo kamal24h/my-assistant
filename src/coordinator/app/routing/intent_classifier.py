@@ -74,9 +74,10 @@ class IntentClassifier:
     # ---------------------------------------------------------
     
     def _apply_mcp_toggle(self, decision: IntentDecision) -> IntentDecision:
-        """اگر MCP غیرفعال است، intentهای وابسته به MCP را به RAG تبدیل کن."""
         if settings.erp_mcp_enabled:
             return decision
+        
+        # اگر MCP غیرفعال است و intent به MCP وابسته است → RAG
         if decision.intent in ("ERP_DATA_QUERY", "ERP_ACTION", "MIXED_QUERY"):
             return IntentDecision(
                 intent="DOCUMENT_QUERY",
@@ -86,6 +87,21 @@ class IntentClassifier:
                 entities=decision.entities,
                 needs_clarification=False,
             )
+        
+        # AMBIGUOUS با reasoning مربوط به ERP → RAG (چون Clarification در مورد ERP بی‌معنی است)
+        if decision.intent == "AMBIGUOUS" and decision.needs_clarification:
+            # اگر سؤال اصلاً درباره ERP نیست، Clarification را نگه دار
+            reasoning = (decision.reasoning or "").casefold()
+            if any(k in reasoning for k in ("erp", "mcp", "عملیات", "رکورد")):
+                return IntentDecision(
+                    intent="DOCUMENT_QUERY",
+                    routes=["local_rag"],
+                    confidence=decision.confidence,
+                    reasoning=f"erp_mcp_disabled (original=AMBIGUOUS: {decision.reasoning})",
+                    entities=decision.entities,
+                    needs_clarification=False,
+                )
+        
         return decision
 
     async def classify(

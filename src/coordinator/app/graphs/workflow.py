@@ -1051,6 +1051,18 @@ async def _evaluate_clarification_before_run(
     if settings.clarification_enabled:
         from app.routing.keyword_fallback import keyword_fallback
         kw = keyword_fallback(req.prompt)
+        # ← toggle: اگر MCP غیرفعال است، intentهای MCP را به RAG تبدیل کن
+        if not settings.erp_mcp_enabled and kw.intent in (
+            "ERP_DATA_QUERY", "ERP_ACTION", "MIXED_QUERY"
+        ):
+            kw = IntentDecision(
+                intent="DOCUMENT_QUERY",
+                routes=["local_rag"],
+                confidence=kw.confidence,
+                reasoning=f"erp_mcp_disabled (original={kw.intent})",
+                entities=kw.entities,
+                needs_clarification=False,
+            )
         # Convert intent → route for `selectedPath`.
         kw_routes = kw.normalized_routes()
         kw_route = kw_routes[0] if kw_routes else "local_rag"

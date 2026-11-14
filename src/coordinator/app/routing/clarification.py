@@ -77,7 +77,7 @@ def _needs_clarification(
         return (False, [], "")
 
     # 4. ERP_ACTION without order_id / entity / reason.
-    if intent == "ERP_ACTION":
+    if intent == "ERP_ACTION" and settings.erp_mcp_enabled:
         missing = []
         if not _has_identifier(text):
             missing.append("order_id")
@@ -99,7 +99,7 @@ def _needs_clarification(
             )
 
     # 5. ERP_DATA_QUERY without identifier / entity.
-    if intent == "ERP_DATA_QUERY":
+    if intent == "ERP_DATA_QUERY" and settings.erp_mcp_enabled:
         if not _has_identifier(text) and not _has_entity_hint(text):
             return (
                 True,
