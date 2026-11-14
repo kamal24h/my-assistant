@@ -136,7 +136,7 @@ class CoordinatorSettings(BaseModel):
         in {"1", "true", "yes", "on"}
     )
     erp_mcp_url: str = Field(
-        default_factory=lambda: os.getenv("ERP_MCP_URL", "http://216.65.200.52:30001/mcp")
+        default_factory=lambda: os.getenv("ERP_MCP_URL", "http://216.65.200.52:30060/mcp")
     )
     erp_mcp_timeout_seconds: float = Field(
         default_factory=lambda: float(os.getenv("ERP_MCP_TIMEOUT_SECONDS", "30")),
