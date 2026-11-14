@@ -64,9 +64,11 @@ class ErpMcpClient:
             headers["Mcp-Session-Id"] = self._session_id
         # Hints only: the MCP server must derive identity from validated credentials.
         if tenant_id:
-            headers["X-ERP-Tenant-Id"] = tenant_id
+            headers["tenantId"] = tenant_id
         if user_id:
-            headers["X-ERP-User-Id"] = user_id
+            headers["userId"] = user_id
+        if tenant_id:
+            headers["placeId"] = tenant_id
         return headers
 
     async def _post(self, client: httpx.AsyncClient, payload: dict[str, Any], *,
