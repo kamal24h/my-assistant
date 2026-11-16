@@ -516,8 +516,7 @@ async def chat_stream(
 # Conversation Management (compat + new)
 # ============================================================
 
-@app.post(
-    "/api/v1/conversations",
+@app.post("/api/v1/conversations",
     response_model=ConversationOut,
     tags=["Conversations"],
     summary="Create conversation (legacy, forwarded to RAG)",
@@ -547,8 +546,7 @@ async def create_conversation(
     return _normalize_conversation_out(result)
 
 
-@app.get(
-    "/api/v1/conversations",
+@app.get("/api/v1/conversations",
     response_model=list[ConversationOut],
     tags=["Conversations"],
     description=(
@@ -589,8 +587,7 @@ async def list_conversations(
     return _normalize_conversation_out(result)
 
 
-@app.get(
-    "/api/v1/conversations/{conv_id}",
+@app.get("/api/v1/conversations/{conv_id}",
     response_model=ConversationDetailOut,
     tags=["Conversations"],
 )
@@ -907,8 +904,7 @@ async def list_document_app_ids(
     return await _rag_forward(request, "GET", "/api/v1/documents/app-ids")
 
 
-@app.get(
-    "/api/v1/documents/by-logical/{logical_doc_id}/versions",
+@app.get("/api/v1/documents/by-logical/{logical_doc_id}/versions",
     response_model=list[DocumentVersionItem],
     tags=["Documents"],
 )
@@ -924,8 +920,7 @@ async def list_document_versions(
     )
 
 
-@app.post(
-    "/api/v1/documents/create",
+@app.post("/api/v1/documents/create",
     tags=["Documents"],
     summary="Upload a PDF or DOCX document",
     description="Uploads a file, extracts text, chunks it, and indexes it in Qdrant. Creates a new version if the doc already exists.",
@@ -966,8 +961,7 @@ async def create_document_file(
     )
 
 
-@app.post(
-    "/api/v1/documents/create-text",
+@app.post("/api/v1/documents/create-text",
     tags=["Documents"],
     summary="Replace all text documents of an app (atomic)",
     description=(
@@ -988,8 +982,7 @@ async def create_text_documents_replace(
     )
 
 
-@app.post(
-    "/api/v1/documents/create-text2",
+@app.post("/api/v1/documents/create-text2",
     tags=["Documents"],
     summary="Upsert text documents (per-document commit)",
     description=(
@@ -1010,8 +1003,7 @@ async def create_text_documents_upsert(
     )
 
 
-@app.delete(
-    "/api/v1/documents/by-logical/{logical_doc_id}",
+@app.delete("/api/v1/documents/by-logical/{logical_doc_id}",
     tags=["Documents"],
     summary="Delete versions of a logical document",
     description=(
@@ -1034,8 +1026,7 @@ async def delete_documents_by_logical_id(
     )
 
 
-@app.delete(
-    "/api/v1/documents/by-app/{app_id}",
+@app.delete("/api/v1/documents/by-app/{app_id}",
     tags=["Documents"],
     summary="Delete all documents of an app",
 )
@@ -1050,8 +1041,7 @@ async def delete_documents_by_app(
     )
 
 
-@app.delete(
-    "/api/v1/documents/{document_id}",
+@app.delete("/api/v1/documents/{document_id}",
     tags=["Documents"],
     summary="Delete a specific document version",
     description="If this was the current version, the previous version becomes current.",
