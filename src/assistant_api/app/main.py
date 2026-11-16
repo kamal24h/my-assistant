@@ -261,7 +261,6 @@ async def lifespan(app: FastAPI):
     yield
     await app.state.http.aclose()
 
-
 app = FastAPI(
     title="Arian Smart Assistant API",
     description=(
@@ -615,8 +614,7 @@ async def get_conversation(
     return result
 
 
-@app.patch(
-    "/api/v1/conversations/{conv_id}",
+@app.patch("/api/v1/conversations/{conv_id}",
     response_model=ConversationOut,
     tags=["Conversations"],
 )
@@ -634,8 +632,7 @@ async def update_conversation(
     return _normalize_conversation_out(result)
 
 
-@app.patch(
-    "/api/v1/conversations/{conv_id}/feedback",
+@app.patch("/api/v1/conversations/{conv_id}/feedback",
     tags=["Conversations"],
 )
 async def conversation_feedback(
@@ -655,8 +652,7 @@ async def conversation_feedback(
 # Messages (compat + new)
 # ============================================================
 
-@app.get(
-    "/api/v1/conversations/{conv_id}/messages",
+@app.get("/api/v1/conversations/{conv_id}/messages",
     response_model=list[MessageOut],
     tags=["Messages"],
 )
@@ -677,8 +673,7 @@ async def list_messages(
     return result
 
 
-@app.post(
-    "/api/v1/conversations/{conv_id}/messages",
+@app.post("/api/v1/conversations/{conv_id}/messages",
     response_model=MessageOut,
     tags=["Messages"],
     summary="Send message (legacy alias for /assistant/chat)",
@@ -788,8 +783,7 @@ async def send_message_legacy(
     }
 
 
-@app.patch(
-    "/api/v1/conversations/{conv_id}/messages/{message_id}/liked",
+@app.patch("/api/v1/conversations/{conv_id}/messages/{message_id}/liked",
     response_model=MessageOut,
     tags=["Messages"],
 )
@@ -870,8 +864,7 @@ async def reject_erp_operation(
 # Documents management proxies (to RAG, direct + with response_model + descriptions)
 # ============================================================
 
-@app.get(
-    "/api/v1/documents",
+@app.get("/api/v1/documents",
     response_model=list[DocumentOut],
     tags=["Documents"],
 )
@@ -891,8 +884,7 @@ async def list_documents(
     return await _rag_forward(request, "GET", "/api/v1/documents", params=params)
 
 
-@app.get(
-    "/api/v1/documents/app-ids",
+@app.get("/api/v1/documents/app-ids",
     response_model=list[str],
     tags=["Documents"],
 )
