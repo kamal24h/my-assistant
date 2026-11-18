@@ -200,7 +200,9 @@ def _headers(self, tenant_id, user_id):
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
-        "MCP-Protocol-Version": "2025-03-26",
+        "MCP-Protocol-Version": "2024-11-05",
+        "X-PlaceId": "810",
+        "X-UserId": "10032087",
     }
     if self.authorization:
         headers["Authorization"] = self.authorization   # ← SSO token کاربر
