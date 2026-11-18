@@ -26,11 +26,11 @@ from app.services.openai_service import (
 logger = logging.getLogger(__name__)
 
 _DEFAULT_POLICY: dict[str, str] = {
-    "local_llm_answer":  "external",
+    "local_llm_answer":  "local",
     "erp_summarizer":    "external",
     "planning_combiner": "external",
     "openai_direct":     "external",
-    "rag_answer":        "external",
+    "rag_answer":        "local",
     "intent_classifier": "local",
     "tool_selector":     "local",
     "small_talk":        "local",
