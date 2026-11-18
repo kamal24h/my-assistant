@@ -153,7 +153,7 @@ class CoordinatorSettings(BaseModel):
         default_factory=lambda: os.getenv("ERP_MCP_WRITE_TOOLS", "")
     )
     erp_mcp_require_user_token: bool = Field(
-        default_factory=lambda: os.getenv("ERP_MCP_REQUIRE_USER_TOKEN", "true").strip().lower() in {"1", "true", "yes", "on"}
+        default_factory=lambda: os.getenv("ERP_MCP_REQUIRE_USER_TOKEN", "false").strip().lower() in {"1", "true", "yes", "on"}
     )
     redis_url: str = Field(default_factory=lambda: os.getenv("REDIS_URL", "redis://redis:6379/0"))
     approval_api_key: str = Field(

@@ -54,7 +54,9 @@ class ErpMcpClient:
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
-            "MCP-Protocol-Version": "2025-11-25",
+            "MCP-Protocol-Version": "2024-11-05",
+            "X-PlaceId": "810",
+            "X-UserId": "10032087",
         }
         if self.authorization:
             headers["Authorization"] = self.authorization
@@ -122,7 +124,7 @@ class ErpMcpClient:
     async def _initialize(self, client: httpx.AsyncClient, tenant_id: str, user_id: str) -> None:
         await self._rpc(
             client, "initialize",
-            {"protocolVersion": "2025-03-26", "capabilities": {},
+            {"protocolVersion": "2024-11-05", "capabilities": {},
              "clientInfo": {"name": "erp-assistant-coordinator", "version": "0.6.0"}},
             tenant_id=tenant_id, user_id=user_id,
         )
