@@ -1,3 +1,4 @@
+# src/coordinator/app/terminology/normalizer.json
 """Persian/Arabic text normalization and safe phrase replacement."""
 from __future__ import annotations
 

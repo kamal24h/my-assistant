@@ -1,3 +1,4 @@
+# src/coordinator/app/terminology/resolver.json
 """Load and resolve glossary terms against user text."""
 from __future__ import annotations
 
@@ -124,7 +125,12 @@ class TerminologyResolver:
                 intent_hints=entry.intent_hints,
                 form_id=entry.form_id,
                 priority=entry.priority,
-            ))
+                english_equivalent=entry.english_equivalent,
+                forbidden_terms=entry.forbidden_terms,
+                usage_rules=entry.usage_rules,
+                product=entry.product,
+                entry_type=entry.entry_type,
+            ))            
             for term in [entry.canonical, *entry.aliases, *entry.related_terms, *entry.search_terms]:
                 cleaned = normalize_text(term)
                 if cleaned and cleaned.casefold() not in {x.casefold() for x in search_terms}:

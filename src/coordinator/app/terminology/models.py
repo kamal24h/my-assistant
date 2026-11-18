@@ -1,26 +1,44 @@
 # src/coordinator/app/terminology/models.py
+"""Validated data models for the organization glossary."""
 from __future__ import annotations
 
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+
 # نگاشت اولویت متنی فارسی به عدد (عدد کمتر = اولویت بالاتر)
-_PRIORITY_MAP = {
-    "خیلی زیاد": 10, "بسیار زیاد": 10,
-    "زیاد": 50, "متوسط": 100, "کم": 500, "خیلی کم": 1000,
+_PRIORITY_MAP: dict[str, int] = {
+    "خیلی زیاد": 10,
+    "بسیار زیاد": 10,
+    "زیاد": 50,
+    "متوسط": 100,
+    "کم": 500,
+    "خیلی کم": 1000,
 }
 
 # نگاشت وضعیت فارسی به وضعیت داخلی
-_STATUS_MAP = {
-    "فعال": "active", "active": "active", "تأییدشده": "active", "تاییدشده": "active",
-    "غیرفعال": "inactive", "inactive": "inactive", "ردشده": "inactive",
+_STATUS_MAP: dict[str, str] = {
+    "فعال": "active",
+    "active": "active",
+    "تأییدشده": "active",
+    "تاییدشده": "active",
+    "غیرفعال": "inactive",
+    "inactive": "inactive",
+    "ردشده": "inactive",
 }
 
 
 class TerminologyEntry(BaseModel):
+    """A canonical business/software term and its linguistic variants.
+
+    `app_ids=[]` means the entry is global. Otherwise it is only considered
+    for the listed ERP applications.
+    """
+
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
+    # --- فیلدهای اصلی مدل ---
     term_id: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_.-]+$")
     canonical: str = Field(min_length=1, max_length=160)
     aliases: list[str] = Field(default_factory=list, max_length=30)
@@ -93,6 +111,20 @@ class TerminologyEntry(BaseModel):
         return self
 
 
+class TerminologyFile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(default=1, ge=1)
+    terms: list[TerminologyEntry] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _unique_term_ids(self):
+        ids = [entry.term_id for entry in self.terms]
+        if len(ids) != len(set(ids)):
+            raise ValueError("term_id باید در فایل واژه‌نامه یکتا باشد.")
+        return self
+
+
 class TerminologyMatch(BaseModel):
     term_id: str
     canonical: str
@@ -105,9 +137,21 @@ class TerminologyMatch(BaseModel):
     intent_hints: list[str] = Field(default_factory=list)
     form_id: str | None = None
     priority: int = 100
-    # جدید:
+    # --- فیلدهای جدید برای انتقال به context ---
     english_equivalent: str = ""
     forbidden_terms: list[str] = Field(default_factory=list)
     usage_rules: str = ""
     product: str = ""
     entry_type: str = ""
+
+
+class TerminologyResolution(BaseModel):
+    original_text: str
+    normalized_text: str
+    matches: list[TerminologyMatch] = Field(default_factory=list)
+    search_terms: list[str] = Field(default_factory=list)
+    context: str = ""
+
+    @property
+    def matched_term_ids(self) -> list[str]:
+        return list(dict.fromkeys(match.term_id for match in self.matches))

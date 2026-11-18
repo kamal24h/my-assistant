@@ -20,4 +20,4 @@ The monorepo now includes a separate public FastAPI gateway at `src/assistant_ap
 - Optional gateway authentication: `X-API-Key: <ASSISTANT_API_KEY>` when `ASSISTANT_API_KEY` is set in `.env`
 - The user's `Authorization: Bearer ...` token is forwarded to Coordinator/MCP unchanged.
 
-Start/rebuild with `docker compose up -d --build assistant-api coordinator fastapi`. This adds a new API entry point; it does not remove the existing .NET integration example or alter Local RAG endpoints.
+Start/rebuild with `docker compose up -d --build assistant coordinator tag`. This adds a new API entry point; it does not remove the existing .NET integration example or alter Local RAG endpoints.
