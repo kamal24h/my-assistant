@@ -173,13 +173,13 @@ def generate_rag_response(
     if search_terms:
         # Keep the original user question intact for reranking and audit.
         retrieval_query = f"{question}\nاصطلاحات و عبارت‌های مرتبط: {' ؛ '.join(search_terms[:30])}"
-
+    
     scored_docs = vector_store.similarity_search_with_score(
-        question,
+        retrieval_query,
         k=k_docs,
         filter=query_filter,
     )
-
+    
     score_by_chunk_id: Dict[str, float] = {}
     raw_docs: List[Any] = []
     for doc, raw_score in scored_docs:
@@ -229,17 +229,17 @@ def generate_rag_response(
         extra_metadata = {
             key: value for key, value in md.items() if key not in core_keys
         }
+
         source: Dict[str, Any] = {
             "doc_id": md.get("doc_id"),
             "doc_name": md.get("doc_name"),
-            "app_id": md.get("app_id", default_app_id),
+            "app_id": md.get("app_id"),
             "chunk_id": str(chunk_id),
             "chunk_hash": str(chunk_hash),
-            "chunk_text": chunk_text,
             "score": qdrant_score,
             "retrieval_rank": rank,
-            "metadata": extra_metadata,
         }
+        
         if md.get("page") is not None:
             source["page"] = md["page"]
         if md.get("start_index") is not None:

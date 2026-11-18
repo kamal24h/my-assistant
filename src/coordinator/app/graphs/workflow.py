@@ -488,11 +488,11 @@ def build_graph():
     def route_by_intent(state: GraphState) -> str:
         decision = state.get("intent_decision")
         if decision is None:
-            logger.info("ROUTE: no decision -> local_rag")
+            logger.warning("ROUTE: no decision -> local_rag")
             return "local_rag"
 
         if decision.needs_clarification or decision.intent == "AMBIGUOUS":
-            logger.info(
+            logger.warning(
                 "ROUTE: intent=%s needs_clarification=%s -> clarification",
                 decision.intent, decision.needs_clarification,
             )
@@ -504,30 +504,30 @@ def build_graph():
         if not settings.erp_mcp_enabled and decision.intent in (
             "ERP_DATA_QUERY", "ERP_ACTION", "MIXED_QUERY"
         ):
-            logger.info(
+            logger.warning(
                 "ROUTE: intent=%s but erp_mcp_enabled=false -> local_rag",
                 decision.intent,
             )
             return "local_rag"
 
         if not routes:
-            logger.info("ROUTE: intent=%s routes=[] -> local_rag", decision.intent)
+            logger.warning("ROUTE: intent=%s routes=[] -> local_rag", decision.intent)
             return "local_rag"
 
         if len(routes) > 1:
-            logger.info(
+            logger.warning(
                 "ROUTE: intent=%s routes=%s -> planning", decision.intent, routes,
             )
             return "planning"
 
         chosen = routes[0]
-        logger.info(
+        logger.warning(
             "ROUTE: intent=%s routes=%s -> %s", decision.intent, routes, chosen,
         )
         return chosen    
 
     async def local_llm_node(state: GraphState) -> dict[str, Any]:
-        logger.info("local_llm_node invoked")
+        logger.warning("local_llm_node invoked")
         req = state["request"]
         started = time.perf_counter()
         answer, source = await answer_external_first(
@@ -551,7 +551,7 @@ def build_graph():
         }
 
     async def local_rag_node(state: GraphState) -> dict[str, Any]:
-        logger.info("local_rag_node invoked")
+        logger.warning("local_rag_node invoked")
         req = state["request"]
         conversation_id, message_id, answer, sources = await invoke_rag_api(
             req,
@@ -569,7 +569,7 @@ def build_graph():
         }
 
     async def local_mcp_node(state: GraphState) -> dict[str, Any]:
-        logger.info("local_mcp_node invoked")
+        logger.warning("local_mcp_node invoked")
         if not settings.erp_mcp_enabled:
             raise McpClientError("erp_mcp_disabled")
         try:
@@ -615,7 +615,7 @@ def build_graph():
         return await local_rag_node(state)
 
     async def openai_node(state: GraphState) -> dict[str, Any]:
-        logger.info("openAI_node invoked")
+        logger.warning("openAI_node invoked")
         req = state["request"]
         started = time.perf_counter()
         answer, source = await answer_external_first(
@@ -742,7 +742,7 @@ def build_graph():
         conversation_id: UUID | None = None
 
         try:
-            logger.info("planning_node: invoking RAG")
+            logger.warning("planning_node: invoking RAG")
             conversation_id, _mid, rag_answer, rag_sources = await invoke_rag_api(
                 req,
                 terminology_context=state.get("terminology_context", ""),
@@ -1064,7 +1064,7 @@ async def _evaluate_clarification_before_run(
     if pending:
         merged = _merge_clarification_prompt(pending, req.prompt)
         req = req.model_copy(update={"prompt": merged})
-        logger.info("Clarification resumed for conversation=%s", req.conversationId)
+        logger.warning("Clarification resumed for conversation=%s", req.conversationId)
         await _clear_pending_clarification(req.conversationId)
 
     assessment = assess_input(req.prompt) if settings.guardrails_enabled else None
