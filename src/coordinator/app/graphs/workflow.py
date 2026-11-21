@@ -381,13 +381,13 @@ async def select_erp_tool(
         ("human",
          """
          سؤال کاربر:
-         {{question}}
+         {question}
 
          اصطلاحات سازمانی (صرفاً راهنما):
-         {{terminology_context}}
+         {terminology_context}
 
          نامزدهای مجاز (JSON):
-         {{tools}}
+         {tools}
 
          خروجی فقط JSON:
          """
