@@ -330,18 +330,17 @@ async def select_erp_tool(
             6. خروجی باید JSON معتبر باشد.
 
             ساختار اجباری خروجی:
-
-            {
+            {{
             "name": "exact_tool_name",
-            "arguments": {}
-            }
+            "arguments": {{}}
+            }}
 
             اگر ابزار مناسبی وجود ندارد:
 
-            {
+            {{
             "name": null,
-            "arguments": {}
-            }
+            "arguments": {{}}
+            }}            
             """
         ),
         (

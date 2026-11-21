@@ -62,8 +62,8 @@ class ErpMcpClient:
             headers["Authorization"] = self.authorization
         elif settings.erp_mcp_bearer_token:
             headers["Authorization"] = f"Bearer {settings.erp_mcp_bearer_token}"
-        if self._session_id:
-            headers["Mcp-Session-Id"] = self._session_id
+        # if self._session_id:
+        #     headers["Mcp-Session-Id"] = self._session_id
         # Hints only: the MCP server must derive identity from validated credentials.
         if tenant_id:
             headers["tenantId"] = tenant_id
@@ -84,9 +84,15 @@ class ErpMcpClient:
             logger.warning("ERP MCP HTTP request failed: %s", type(exc).__name__)
             raise McpClientError("erp_mcp_unavailable") from exc
 
-        sid = response.headers.get("Mcp-Session-Id") or response.headers.get("mcp-session-id")
-        if sid:
-            self._session_id = sid
+         # این خط باید اینجا باشد، بعد از تعریف response
+        logger.warning("MCP response status=%s content_type=%s body=%s",
+                    response.status_code,
+                    response.headers.get("content-type", ""),
+                    response.text[:2000])
+
+        # sid = response.headers.get("Mcp-Session-Id") or response.headers.get("mcp-session-id")
+        # if sid:
+        #     self._session_id = sid
         if notification or response.status_code == 202 or not response.content:
             return None
 
@@ -109,27 +115,41 @@ class ErpMcpClient:
             raise McpClientError("invalid_erp_mcp_response") from exc
 
     async def _rpc(self, client: httpx.AsyncClient, method: str, params: dict[str, Any] | None = None,
-                   *, tenant_id: str | None = None, user_id: str | None = None) -> dict[str, Any]:
+               *, tenant_id: str | None = None, user_id: str | None = None) -> dict[str, Any]:
         self._request_id += 1
-        result = await self._post(
-            client,
-            {"jsonrpc": "2.0", "id": self._request_id, "method": method, "params": params or {}},
-            tenant_id=tenant_id, user_id=user_id,
-        )
-        if not result or "error" in result or "result" not in result:
-            logger.warning("ERP MCP returned an RPC error for method %s", method)
+        payload = {"jsonrpc": "2.0", "id": self._request_id, "method": method, "params": params or {}}
+        logger.debug("MCP RPC request: method=%s id=%s", method, self._request_id)
+        result = await self._post(client, payload, tenant_id=tenant_id, user_id=user_id)
+        if not isinstance(result, dict):
+            logger.warning("MCP RPC returned non-dict for method %s: %r", method, result)
+            raise McpClientError("erp_mcp_rpc_failed")
+        if "error" in result:
+            logger.warning("MCP RPC error for method %s: %s", method, result.get("error"))
+            raise McpClientError("erp_mcp_rpc_failed")
+        if "result" not in result:
+            logger.warning("MCP RPC missing 'result' for method %s: keys=%s", method, list(result.keys()))
             raise McpClientError("erp_mcp_rpc_failed")
         return result["result"]
-
+    
     async def _initialize(self, client: httpx.AsyncClient, tenant_id: str, user_id: str) -> None:
-        await self._rpc(
-            client, "initialize",
-            {"protocolVersion": "2024-11-05", "capabilities": {},
-             "clientInfo": {"name": "erp-assistant-coordinator", "version": "0.6.0"}},
-            tenant_id=tenant_id, user_id=user_id,
-        )
-        await self._post(client, {"jsonrpc": "2.0", "method": "notifications/initialized"},
-                         tenant_id=tenant_id, user_id=user_id, notification=True)
+        """Attempt MCP handshake, but tolerate stateless servers that don't support it."""
+        try:
+            await self._rpc(
+                client, "initialize",
+                {"protocolVersion": "2024-11-05", "capabilities": {},
+                "clientInfo": {"name": "erp-assistant-coordinator", "version": "0.6.0"}},
+                tenant_id=tenant_id, user_id=user_id,
+            )
+            # Notification: must not have an `id` and should not raise on empty response.
+            await self._post(
+                client,
+                {"jsonrpc": "2.0", "method": "notifications/initialized"},
+                tenant_id=tenant_id, user_id=user_id, notification=True,
+            )
+            logger.info("MCP initialize completed")
+        except McpClientError as exc:
+            # Stateless servers may reject initialize; that's fine.
+            logger.warning("MCP initialize skipped or failed (%s); continuing stateless", exc)
 
     @staticmethod
     def _configured_names(value: str) -> set[str]:
@@ -164,9 +184,9 @@ class ErpMcpClient:
         return safe
 
     async def _list_tools_with_client(self, client: httpx.AsyncClient, tenant_id: str,
-                                      user_id: str, mode: str) -> list[dict[str, Any]]:
-        await self._initialize(client, tenant_id, user_id)
-        result = await self._rpc(client, "tools/list", {}, tenant_id=tenant_id, user_id=user_id)
+                                  user_id: str, mode: str) -> list[dict[str, Any]]:
+        # Stateless server: skip initialize entirely.
+        result = await self._rpc(client, "tools/list", {})
         tools = result.get("tools", []) if isinstance(result, dict) else []
         if not isinstance(tools, list):
             raise McpClientError("invalid_erp_mcp_tools_response")
@@ -175,6 +195,19 @@ class ErpMcpClient:
         if mode == "write":
             return self._allowed_write_tools(tools)
         return tools
+
+    # async def _list_tools_with_client(self, client: httpx.AsyncClient, tenant_id: str,
+    #                                   user_id: str, mode: str) -> list[dict[str, Any]]:
+    #     await self._initialize(client, tenant_id, user_id)
+    #     result = await self._rpc(client, "tools/list", {}, tenant_id=tenant_id, user_id=user_id)
+    #     tools = result.get("tools", []) if isinstance(result, dict) else []
+    #     if not isinstance(tools, list):
+    #         raise McpClientError("invalid_erp_mcp_tools_response")
+    #     if mode == "read":
+    #         return self._allowed_tools(tools)
+    #     if mode == "write":
+    #         return self._allowed_write_tools(tools)
+    #     return tools
 
     async def list_read_only_tools(self, tenant_id: str, user_id: str) -> list[dict[str, Any]]:
         self._require_user_auth()
