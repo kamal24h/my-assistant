@@ -55,9 +55,15 @@ class ErpMcpClient:
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
             "MCP-Protocol-Version": "2024-11-05",
-            "X-PlaceId": "810",
-            "X-UserId": "10032087",
         }
+        # Dynamic request context (never hard-coded identities). The MCP server
+        # must still validate the bearer token and enforce authorization itself.
+        if tenant_id:
+            headers["X-TenantId"] = tenant_id
+            # headers["tenant_id"] = tenant_id
+        if user_id:
+            headers["X-UserId"] = user_id
+            # headers["userId"] = user_id
         if self.authorization:
             headers["Authorization"] = self.authorization
         elif settings.erp_mcp_bearer_token:
@@ -66,11 +72,10 @@ class ErpMcpClient:
         #     headers["Mcp-Session-Id"] = self._session_id
         # Hints only: the MCP server must derive identity from validated credentials.
         if tenant_id:
-            headers["tenantId"] = tenant_id
+            headers["X-TenantId"] = tenant_id
         if user_id:
-            headers["userId"] = user_id
-        if tenant_id:
-            headers["placeId"] = tenant_id
+            headers["X-UserId"] = user_id
+        
         return headers
 
     async def _post(self, client: httpx.AsyncClient, payload: dict[str, Any], *,
@@ -88,7 +93,13 @@ class ErpMcpClient:
         logger.warning("MCP response status=%s content_type=%s body=%s",
                     response.status_code,
                     response.headers.get("content-type", ""),
-                    response.text[:2000])
+                    response.text[:100])
+
+        # logger.debug("MCP response status=%s content_type=%s",
+        #     response.status_code, response.headers.get("content-type", ""))
+        # sid = response.headers.get("Mcp-Session-Id") or response.headers.get("mcp-session-id")
+        # if sid:
+        #     self._session_id = sid
 
         # sid = response.headers.get("Mcp-Session-Id") or response.headers.get("mcp-session-id")
         # if sid:
@@ -159,6 +170,7 @@ class ErpMcpClient:
     def _allowed_tools(self, tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
         configured = self._configured_names(settings.erp_mcp_read_only_tools)
         safe = []
+        excluded_names: list[str] = []
         for tool in tools:
             name = str(tool.get("name", ""))
             annotations = tool.get("annotations") or {}
@@ -168,6 +180,12 @@ class ErpMcpClient:
             destructive = annotations.get("destructiveHint") is True
             if name and not destructive and not explicitly_not_read_only and (explicitly_allowed or marked_read_only):
                 safe.append(tool)
+            elif name:
+                excluded_names.append(name)
+        logger.info("ERP MCP read-tool policy: discovered=%d allowed=%d excluded=%d",
+                    len(tools), len(safe), len(excluded_names))
+        if excluded_names:
+            logger.debug("ERP MCP tools excluded by read-only policy: %s", excluded_names)
         return safe
 
     def _allowed_write_tools(self, tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -195,19 +213,6 @@ class ErpMcpClient:
         if mode == "write":
             return self._allowed_write_tools(tools)
         return tools
-
-    # async def _list_tools_with_client(self, client: httpx.AsyncClient, tenant_id: str,
-    #                                   user_id: str, mode: str) -> list[dict[str, Any]]:
-    #     await self._initialize(client, tenant_id, user_id)
-    #     result = await self._rpc(client, "tools/list", {}, tenant_id=tenant_id, user_id=user_id)
-    #     tools = result.get("tools", []) if isinstance(result, dict) else []
-    #     if not isinstance(tools, list):
-    #         raise McpClientError("invalid_erp_mcp_tools_response")
-    #     if mode == "read":
-    #         return self._allowed_tools(tools)
-    #     if mode == "write":
-    #         return self._allowed_write_tools(tools)
-    #     return tools
 
     async def list_read_only_tools(self, tenant_id: str, user_id: str) -> list[dict[str, Any]]:
         self._require_user_auth()
